@@ -2,6 +2,10 @@
 
 A unified MCP server for email access across Gmail, Outlook, iCloud, and generic IMAP providers.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/marlinjai-email-mcp).
+
 ## Features
 
 - **Multi-provider support** -- Gmail (REST API), Outlook (Microsoft Graph), iCloud (IMAP), and generic IMAP/SMTP
