@@ -114,7 +114,7 @@ npx @marlinjai/email-mcp setup
 | `email_remove_account` | Remove an account and its stored credentials |
 | `email_test_account` | Test connection to an account |
 
-### Reading & Searching (5)
+### Reading & Searching (6)
 
 | Tool | Description |
 |------|-------------|
@@ -123,6 +123,7 @@ npx @marlinjai/email-mcp setup
 | `email_get` | Get full email content by ID (headers, body, attachment metadata) |
 | `email_get_thread` | Get an entire email thread/conversation |
 | `email_get_attachment` | Download a specific attachment by ID (returns base64 data) |
+| `email_save_attachment` | Download an attachment and save directly to a file path. Returns metadata only — avoids base64 in response (fast for large files) |
 
 ### Sending & Drafts (5)
 

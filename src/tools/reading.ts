@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
@@ -140,6 +142,37 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
         return jsonResult({
           data: Buffer.from(data).toString('base64'),
           meta,
+        });
+      } catch (error: any) {
+        return jsonResult({ error: error.message });
+      }
+    },
+  );
+
+  // --- email_save_attachment ---
+  server.tool(
+    'email_save_attachment',
+    'Download an email attachment and save it directly to a file path. Returns metadata only (no base64 data in response), avoiding token costs for large attachments.',
+    {
+      accountId: z.string(),
+      emailId: z.string(),
+      attachmentId: z.string(),
+      outputPath: z.string().describe('Absolute file path where the attachment should be saved'),
+    },
+    async (args) => {
+      try {
+        const provider = await accountManager.getProvider(args.accountId);
+        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId);
+
+        const absPath = path.resolve(args.outputPath);
+        fs.mkdirSync(path.dirname(absPath), { recursive: true });
+        fs.writeFileSync(absPath, Buffer.from(data));
+
+        return jsonResult({
+          path: absPath,
+          bytes: data.length,
+          filename: meta.filename,
+          mimeType: meta.mimeType,
         });
       } catch (error: any) {
         return jsonResult({ error: error.message });
