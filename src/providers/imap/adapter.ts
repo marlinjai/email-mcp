@@ -58,6 +58,7 @@ export class ImapAdapter implements EmailProvider {
   protected accountId: string = '';
   protected email: string = '';
   protected passwordCreds: PasswordCredentials | null = null;
+  private connectingPromise: Promise<void> | null = null;
 
   async connect(credentials: AccountCredentials): Promise<void> {
     if (!credentials.password) {
@@ -66,26 +67,91 @@ export class ImapAdapter implements EmailProvider {
     this.accountId = credentials.id;
     this.email = credentials.email;
     this.passwordCreds = credentials.password;
-
-    this.client = new ImapFlow({
-      host: credentials.password.host,
-      port: credentials.password.port,
-      secure: credentials.password.tls,
-      auth: {
-        user: credentials.email,
-        pass: credentials.password.password,
-      },
-      logger: false,
-    });
-
-    await this.client.connect();
+    await this.ensureConnected();
   }
 
   async disconnect(): Promise<void> {
     if (this.client) {
-      await this.client.logout();
+      try { await this.client.logout(); } catch { /* socket may already be dead */ }
       this.client = null;
     }
+    // Clear stored credentials so a subsequent operation does not silently
+    // reconnect after an explicit disconnect.
+    this.passwordCreds = null;
+  }
+
+  /**
+   * Builds a fresh ImapFlow client from stored credentials and wires up
+   * close/error listeners so a dropped socket clears `this.client`, forcing
+   * the next `ensureConnected()` call to reconnect.
+   */
+  private buildClient(): InstanceType<typeof ImapFlow> {
+    if (!this.passwordCreds) {
+      throw new Error('Cannot build IMAP client without stored credentials');
+    }
+    const client = new ImapFlow({
+      host: this.passwordCreds.host,
+      port: this.passwordCreds.port,
+      secure: this.passwordCreds.tls,
+      auth: { user: this.email, pass: this.passwordCreds.password },
+      logger: false,
+    });
+    const drop = () => { if (this.client === client) this.client = null; };
+    client.on('close', drop);
+    client.on('error', drop);
+    return client;
+  }
+
+  /**
+   * Returns true while the underlying ImapFlow socket is healthy.
+   * ImapFlow sets `usable=false` when the connection is closed, in the
+   * middle of logging out, or otherwise unsafe to issue commands on.
+   */
+  private isClientUsable(): boolean {
+    return !!this.client && (this.client as any).usable === true;
+  }
+
+  /**
+   * Guarantees a usable IMAP client and returns it. Reconnects transparently
+   * if the previous client was dropped (idle timeout, server-side disconnect,
+   * network flap). Concurrent callers share a single in-flight reconnect to
+   * avoid duplicate sessions.
+   *
+   * Callers should bind the result to a local `const client` and use that
+   * within the method instead of `this.client`, so a `'close'` event mid-call
+   * does not race the active operation.
+   */
+  protected async ensureConnected(): Promise<InstanceType<typeof ImapFlow>> {
+    if (this.connectingPromise) {
+      await this.connectingPromise;
+    }
+
+    if (!this.isClientUsable()) {
+      // Preserve the historical "Not connected" error when the adapter has
+      // never connected (or has been explicitly disconnected). Without
+      // stored credentials we have nothing to reconnect with.
+      if (!this.passwordCreds) {
+        throw new Error('Not connected');
+      }
+
+      this.connectingPromise = (async () => {
+        if (this.client) {
+          try { await this.client.logout(); } catch { /* ignore */ }
+          this.client = null;
+        }
+        const client = this.buildClient();
+        await client.connect();
+        this.client = client;
+      })().finally(() => {
+        this.connectingPromise = null;
+      });
+      await this.connectingPromise;
+    }
+
+    if (!this.client) {
+      throw new Error('IMAP client unavailable after reconnect attempt');
+    }
+    return this.client;
   }
 
   async testConnection(): Promise<{ success: boolean; folderCount: number; error?: string }> {
@@ -98,15 +164,15 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async listFolders(): Promise<Folder[]> {
-    if (!this.client) throw new Error('Not connected');
-    const imapFolders = await this.client.list();
+    const client = await this.ensureConnected();
+    const imapFolders = await client.list();
     return imapFolders.map(mapImapFolder);
   }
 
   async createFolder(name: string, parentPath?: string): Promise<Folder> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const fullPath = parentPath ? `${parentPath}/${name}` : name;
-    const result = await this.client.mailboxCreate(fullPath);
+    const result = await client.mailboxCreate(fullPath);
     return {
       id: result.path,
       name: result.name || name,
@@ -137,7 +203,7 @@ export class ImapAdapter implements EmailProvider {
    * and matching by name or special-use type.
    */
   protected async resolveFolder(folder: string): Promise<string> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     // Common aliases: map well-known names to potential IMAP special-use types
     const FOLDER_ALIASES: Record<string, string[]> = {
@@ -150,7 +216,7 @@ export class ImapAdapter implements EmailProvider {
     };
 
     // First, try to match against known folder paths from the server
-    const folders = await this.client.list();
+    const folders = await client.list();
     const lowerFolder = folder.toLowerCase();
 
     // Exact path match (case-insensitive for non-INBOX folders)
@@ -200,7 +266,7 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async search(query: SearchQuery): Promise<Email[]> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     const requestedFolder = query.folder || 'INBOX';
 
@@ -214,17 +280,17 @@ export class ImapAdapter implements EmailProvider {
     }
 
     // Refresh connection state before search (helps with iCloud stale sessions)
-    try { await this.client.noop(); } catch { /* ignore */ }
+    try { await client.noop(); } catch { /* ignore */ }
 
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
 
     try {
-      const mailboxExists = (this.client as any).mailbox?.exists ?? 0;
+      const mailboxExists = (client as any).mailbox?.exists ?? 0;
       if (mailboxExists === 0) {
         return [];
       }
@@ -234,7 +300,7 @@ export class ImapAdapter implements EmailProvider {
       let allUids: number[] = [];
 
       try {
-        const searchResult = await this.client.search(
+        const searchResult = await client.search(
           hasCriteria ? criteria : { all: true },
           { uid: true }
         );
@@ -242,7 +308,7 @@ export class ImapAdapter implements EmailProvider {
       } catch {
         // SEARCH failed — fall back to FETCH-based UID collection
         try {
-          allUids = await this.collectUidsViaFetch(query);
+          allUids = await this.collectUidsViaFetch(client, query);
         } catch {
           return [];
         }
@@ -255,7 +321,7 @@ export class ImapAdapter implements EmailProvider {
 
       if (slicedUids.length === 0) return [];
 
-      return await this.fetchEmails(slicedUids, folder, query.returnBody);
+      return await this.fetchEmails(client, slicedUids, folder, query.returnBody);
     } catch (error: any) {
       throw formatImapError(error, `Search failed in folder "${folder}"`);
     } finally {
@@ -270,15 +336,17 @@ export class ImapAdapter implements EmailProvider {
    * 2. FETCH 1:N using mailbox.exists as explicit range
    * 3. Individual sequence number fetches (slowest but most resilient)
    */
-  private async collectUidsViaFetch(query: SearchQuery): Promise<number[]> {
-    if (!this.client) return [];
+  private async collectUidsViaFetch(
+    client: InstanceType<typeof ImapFlow>,
+    query: SearchQuery,
+  ): Promise<number[]> {
     const uids: number[] = [];
-    const exists = (this.client as any).mailbox?.exists ?? 0;
+    const exists = (client as any).mailbox?.exists ?? 0;
 
     // Helper: safely iterate a fetch stream, collecting UIDs
     const safeFetch = async (range: string): Promise<boolean> => {
       try {
-        const messages = await this.client!.fetchAll(range, { uid: true, flags: true });
+        const messages = await client.fetchAll(range, { uid: true, flags: true });
         for (const msg of messages) {
           if (query.unreadOnly && msg.flags?.has('\\Seen')) continue;
           if (query.starredOnly && !msg.flags?.has('\\Flagged')) continue;
@@ -304,7 +372,7 @@ export class ImapAdapter implements EmailProvider {
     const count = exists > 0 ? exists : 50;
     for (let seq = 1; seq <= count; seq++) {
       try {
-        const msgs = await this.client.fetchAll(String(seq), { uid: true, flags: true });
+        const msgs = await client.fetchAll(String(seq), { uid: true, flags: true });
         for (const msg of msgs) {
           if (query.unreadOnly && msg.flags?.has('\\Seen')) continue;
           if (query.starredOnly && !msg.flags?.has('\\Flagged')) continue;
@@ -318,8 +386,12 @@ export class ImapAdapter implements EmailProvider {
   /**
    * Fetches email data for a set of UIDs, either with full body or lightweight headers.
    */
-  private async fetchEmails(uids: number[], folder: string, returnBody?: boolean): Promise<Email[]> {
-    if (!this.client) return [];
+  private async fetchEmails(
+    client: InstanceType<typeof ImapFlow>,
+    uids: number[],
+    folder: string,
+    returnBody?: boolean,
+  ): Promise<Email[]> {
     const emails: Email[] = [];
 
     const fetchOpts = returnBody
@@ -332,13 +404,13 @@ export class ImapAdapter implements EmailProvider {
     const uidRange = uids.join(',');
     let messages: any[];
     try {
-      messages = await this.client.fetchAll(uidRange, fetchOpts, { uid: true });
+      messages = await client.fetchAll(uidRange, fetchOpts, { uid: true });
     } catch {
       // Batch failed — fetch individually, skipping failures
       messages = [];
       for (const uid of uids) {
         try {
-          const batch = await this.client.fetchAll(String(uid), fetchOpts, { uid: true });
+          const batch = await client.fetchAll(String(uid), fetchOpts, { uid: true });
           messages.push(...batch);
         } catch { /* skip this UID */ }
       }
@@ -379,19 +451,19 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async getEmail(id: string, folder?: string): Promise<Email> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     const targetFolder = folder || 'INBOX';
     let lock;
     try {
-      lock = await this.client.getMailboxLock(targetFolder);
+      lock = await client.getMailboxLock(targetFolder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${targetFolder}"`);
     }
 
     try {
       const uid = parseInt(id, 10);
-      const msg = await this.client.fetchOne(String(uid), { source: true, uid: true, flags: true }, { uid: true });
+      const msg = await client.fetchOne(String(uid), { source: true, uid: true, flags: true }, { uid: true });
       if (!msg) throw new Error(`Email ${id} not found`);
 
       const parsed = await simpleParser(msg.source);
@@ -403,17 +475,17 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async getThread(threadId: string): Promise<Thread> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     let lock;
     try {
-      lock = await this.client.getMailboxLock('INBOX');
+      lock = await client.getMailboxLock('INBOX');
     } catch (error: any) {
       throw formatImapError(error, 'Failed to open folder "INBOX"');
     }
     try {
       // Search for messages that reference this thread ID via header
-      const searchResult = await this.client.search(
+      const searchResult = await client.search(
         { or: [{ header: { 'message-id': threadId } }, { header: { references: threadId } }, { header: { 'in-reply-to': threadId } }] },
         { uid: true }
       );
@@ -422,7 +494,7 @@ export class ImapAdapter implements EmailProvider {
       if (uids.length === 0) throw new Error(`Thread ${threadId} not found`);
 
       const messages: Email[] = [];
-      for await (const msg of this.client.fetch(uids, { source: true, uid: true, flags: true })) {
+      for await (const msg of client.fetch(uids, { source: true, uid: true, flags: true })) {
         const parsed = await simpleParser(msg.source);
         (parsed as any).flags = msg.flags;
         messages.push(mapParsedEmail(parsed, 'INBOX', this.accountId, msg.uid));
@@ -454,16 +526,16 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async getAttachment(emailId: string, attachmentId: string): Promise<{ data: Buffer; meta: AttachmentMeta }> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     let lock;
     try {
-      lock = await this.client.getMailboxLock('INBOX');
+      lock = await client.getMailboxLock('INBOX');
     } catch (error: any) {
       throw formatImapError(error, 'Failed to open folder "INBOX"');
     }
     try {
-      const msg = await this.client.fetchOne(String(emailId), { source: true, uid: true }, { uid: true });
+      const msg = await client.fetchOne(String(emailId), { source: true, uid: true }, { uid: true });
       if (!msg) throw new Error(`Email ${emailId} not found`);
 
       const parsed = await simpleParser(msg.source);
@@ -494,7 +566,7 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
 
     // Build RFC 2822 message
     const lines: string[] = [];
@@ -513,7 +585,8 @@ export class ImapAdapter implements EmailProvider {
     lines.push(params.body.text || '');
 
     const rawMessage = lines.join('\r\n');
-    const result = await this.client.append('Drafts', rawMessage, ['\\Draft', '\\Seen']);
+    const result = await client.append('Drafts', rawMessage, ['\\Draft', '\\Seen']);
+    if (!result) throw new Error('Failed to append draft');
     return { id: String(result.uid || result) };
   }
 
@@ -526,37 +599,37 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async moveEmail(emailId: string, targetFolder: string, sourceFolder?: string): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const folder = sourceFolder || 'INBOX';
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
-      await this.client.messageMove(emailId, targetFolder, { uid: true });
+      await client.messageMove(emailId, targetFolder, { uid: true });
     } finally {
       lock.release();
     }
   }
 
   async deleteEmail(emailId: string, permanent?: boolean, sourceFolder?: string): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const folder = sourceFolder ? await this.resolveFolder(sourceFolder) : 'INBOX';
     const trashFolder = await this.resolveFolder('Trash');
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
       if (permanent || folder === trashFolder) {
         // Permanently delete if requested or if already in trash
-        await this.client.messageDelete(emailId, { uid: true });
+        await client.messageDelete(emailId, { uid: true });
       } else {
-        await this.client.messageMove(emailId, trashFolder, { uid: true });
+        await client.messageMove(emailId, trashFolder, { uid: true });
       }
     } finally {
       lock.release();
@@ -564,25 +637,25 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async markEmail(emailId: string, flags: { read?: boolean; starred?: boolean; flagged?: boolean }, sourceFolder?: string): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const folder = sourceFolder || 'INBOX';
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
       if (flags.read === true) {
-        await this.client.messageFlagsAdd(emailId, ['\\Seen'], { uid: true });
+        await client.messageFlagsAdd(emailId, ['\\Seen'], { uid: true });
       } else if (flags.read === false) {
-        await this.client.messageFlagsRemove(emailId, ['\\Seen'], { uid: true });
+        await client.messageFlagsRemove(emailId, ['\\Seen'], { uid: true });
       }
 
       if (flags.starred === true || flags.flagged === true) {
-        await this.client.messageFlagsAdd(emailId, ['\\Flagged'], { uid: true });
+        await client.messageFlagsAdd(emailId, ['\\Flagged'], { uid: true });
       } else if (flags.starred === false || flags.flagged === false) {
-        await this.client.messageFlagsRemove(emailId, ['\\Flagged'], { uid: true });
+        await client.messageFlagsRemove(emailId, ['\\Flagged'], { uid: true });
       }
     } finally {
       lock.release();
@@ -590,14 +663,14 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async batchDelete(emailIds: string[], permanent?: boolean, sourceFolder?: string): Promise<BatchResult> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const result: BatchResult = { succeeded: [], failed: [] };
     const folder = sourceFolder ? await this.resolveFolder(sourceFolder) : 'INBOX';
     const trashFolder = await this.resolveFolder('Trash');
     const shouldPermanentDelete = permanent || folder === trashFolder;
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
@@ -606,9 +679,9 @@ export class ImapAdapter implements EmailProvider {
       // ImapFlow supports UID ranges as comma-separated strings
       const uidRange = emailIds.join(',');
       if (shouldPermanentDelete) {
-        await this.client.messageDelete(uidRange, { uid: true });
+        await client.messageDelete(uidRange, { uid: true });
       } else {
-        await this.client.messageMove(uidRange, trashFolder, { uid: true });
+        await client.messageMove(uidRange, trashFolder, { uid: true });
       }
       result.succeeded = [...emailIds];
     } catch (error: any) {
@@ -616,9 +689,9 @@ export class ImapAdapter implements EmailProvider {
       for (const id of emailIds) {
         try {
           if (shouldPermanentDelete) {
-            await this.client.messageDelete(id, { uid: true });
+            await client.messageDelete(id, { uid: true });
           } else {
-            await this.client.messageMove(id, trashFolder, { uid: true });
+            await client.messageMove(id, trashFolder, { uid: true });
           }
           result.succeeded.push(id);
         } catch (e: any) {
@@ -633,24 +706,24 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async batchMove(emailIds: string[], targetFolder: string, sourceFolder?: string): Promise<BatchResult> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const result: BatchResult = { succeeded: [], failed: [] };
     const folder = sourceFolder || 'INBOX';
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
 
     try {
       const uidRange = emailIds.join(',');
-      await this.client.messageMove(uidRange, targetFolder, { uid: true });
+      await client.messageMove(uidRange, targetFolder, { uid: true });
       result.succeeded = [...emailIds];
     } catch (error: any) {
       for (const id of emailIds) {
         try {
-          await this.client.messageMove(id, targetFolder, { uid: true });
+          await client.messageMove(id, targetFolder, { uid: true });
           result.succeeded.push(id);
         } catch (e: any) {
           result.failed.push({ id, error: e.message });
@@ -664,12 +737,12 @@ export class ImapAdapter implements EmailProvider {
   }
 
   async batchMark(emailIds: string[], flags: { read?: boolean; starred?: boolean; flagged?: boolean }, sourceFolder?: string): Promise<BatchResult> {
-    if (!this.client) throw new Error('Not connected');
+    const client = await this.ensureConnected();
     const result: BatchResult = { succeeded: [], failed: [] };
     const folder = sourceFolder || 'INBOX';
     let lock;
     try {
-      lock = await this.client.getMailboxLock(folder);
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
@@ -678,15 +751,15 @@ export class ImapAdapter implements EmailProvider {
       const uidRange = emailIds.join(',');
 
       if (flags.read === true) {
-        await this.client.messageFlagsAdd(uidRange, ['\\Seen'], { uid: true });
+        await client.messageFlagsAdd(uidRange, ['\\Seen'], { uid: true });
       } else if (flags.read === false) {
-        await this.client.messageFlagsRemove(uidRange, ['\\Seen'], { uid: true });
+        await client.messageFlagsRemove(uidRange, ['\\Seen'], { uid: true });
       }
 
       if (flags.starred === true || flags.flagged === true) {
-        await this.client.messageFlagsAdd(uidRange, ['\\Flagged'], { uid: true });
+        await client.messageFlagsAdd(uidRange, ['\\Flagged'], { uid: true });
       } else if (flags.starred === false || flags.flagged === false) {
-        await this.client.messageFlagsRemove(uidRange, ['\\Flagged'], { uid: true });
+        await client.messageFlagsRemove(uidRange, ['\\Flagged'], { uid: true });
       }
 
       result.succeeded = [...emailIds];

@@ -70,6 +70,7 @@ vi.mock('imapflow', () => {
     logout = vi.fn().mockResolvedValue(undefined);
     list = vi.fn().mockResolvedValue(mockFolders);
     usable = true;
+    on = vi.fn();
 
     search = vi.fn().mockImplementation(() => Promise.resolve(mockSearchResult));
     noop = vi.fn().mockResolvedValue(undefined);

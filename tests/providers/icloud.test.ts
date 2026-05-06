@@ -23,6 +23,7 @@ vi.mock('imapflow', () => {
     logout = vi.fn().mockResolvedValue(undefined);
     list = vi.fn().mockResolvedValue(mockFolders);
     usable = true;
+    on = vi.fn();
     mailbox: any = null;
 
     search = vi.fn().mockImplementation(() => {
