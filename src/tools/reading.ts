@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
@@ -5,6 +8,31 @@ import type { SearchQuery, Email } from '../models/types.js';
 
 function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+// email_save_attachment writes to disk on the host running this MCP server.
+// The output path comes from the tool caller (an LLM), which may be acting on
+// untrusted content (a prompt-injected email body, a manipulated instruction).
+// Restricting writes to one base directory and rejecting any path that
+// resolves outside it turns "arbitrary file write anywhere on the host" into
+// "write anywhere under this one directory" — the downloads dir is still
+// yours to manage, but a malicious outputPath can't reach ~/.ssh or /etc.
+function getDownloadsBaseDir(): string {
+  return path.resolve(
+    process.env.EMAIL_MCP_DOWNLOADS_DIR || path.join(os.homedir(), '.email-mcp', 'downloads'),
+  );
+}
+
+function resolveDownloadPath(outputPath: string): string {
+  const baseDir = getDownloadsBaseDir();
+  const resolved = path.resolve(baseDir, outputPath);
+  const relative = path.relative(baseDir, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(
+      `outputPath must resolve inside ${baseDir} (set EMAIL_MCP_DOWNLOADS_DIR to change the base directory)`,
+    );
+  }
+  return resolved;
 }
 
 function stripBodies(emails: Email[]): Email[] {
@@ -140,6 +168,37 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
         return jsonResult({
           data: Buffer.from(data).toString('base64'),
           meta,
+        });
+      } catch (error: any) {
+        return jsonResult({ error: error.message });
+      }
+    },
+  );
+
+  // --- email_save_attachment ---
+  server.tool(
+    'email_save_attachment',
+    `Download an email attachment and save it directly to disk, returning metadata only (no base64 in the response) — avoids paying the token cost of round-tripping large attachments through the calling model. outputPath is relative to a fixed downloads directory (${getDownloadsBaseDir()}, override with EMAIL_MCP_DOWNLOADS_DIR) and cannot escape it.`,
+    {
+      accountId: z.string(),
+      emailId: z.string(),
+      attachmentId: z.string(),
+      outputPath: z.string().describe('Relative file path (within the downloads directory) to save the attachment as'),
+    },
+    async (args) => {
+      try {
+        const absPath = resolveDownloadPath(args.outputPath);
+        const provider = await accountManager.getProvider(args.accountId);
+        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId);
+
+        fs.mkdirSync(path.dirname(absPath), { recursive: true });
+        fs.writeFileSync(absPath, Buffer.from(data));
+
+        return jsonResult({
+          path: absPath,
+          bytes: data.length,
+          filename: meta.filename,
+          mimeType: meta.contentType,
         });
       } catch (error: any) {
         return jsonResult({ error: error.message });

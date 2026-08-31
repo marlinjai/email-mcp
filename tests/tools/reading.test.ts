@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AccountManager } from '../../src/account-manager.js';
 import { registerReadingTools } from '../../src/tools/reading.js';
@@ -276,6 +279,82 @@ describe('Reading tools', () => {
       expect(parsed.meta.filename).toBe('document.pdf');
       expect(parsed.meta.contentType).toBe('application/pdf');
       expect(parsed.meta.size).toBe(12);
+    });
+  });
+
+  describe('email_save_attachment', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'email-mcp-downloads-test-'));
+      vi.stubEnv('EMAIL_MCP_DOWNLOADS_DIR', tmpDir);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('is registered', () => {
+      expect(hasRegisteredTool(server, 'email_save_attachment')).toBe(true);
+    });
+
+    it('writes the attachment to disk under the downloads dir and returns metadata only', async () => {
+      const result = await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: 'document.pdf',
+      });
+
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1');
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.path).toBe(path.join(tmpDir, 'document.pdf'));
+      expect(parsed.filename).toBe('document.pdf');
+      expect(parsed.mimeType).toBe('application/pdf');
+      expect(parsed.bytes).toBe(Buffer.from('file-content').length);
+      expect(parsed.data).toBeUndefined();
+
+      expect(fs.readFileSync(path.join(tmpDir, 'document.pdf'), 'utf-8')).toBe('file-content');
+    });
+
+    it('creates nested subdirectories under the downloads dir', async () => {
+      const result = await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: 'invoices/2026/document.pdf',
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.path).toBe(path.join(tmpDir, 'invoices', '2026', 'document.pdf'));
+      expect(fs.existsSync(parsed.path)).toBe(true);
+    });
+
+    it('rejects an outputPath that escapes the downloads directory via traversal', async () => {
+      const result = await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: '../../../etc/passwd',
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toContain('must resolve inside');
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+    });
+
+    it('rejects an absolute outputPath outside the downloads directory', async () => {
+      const result = await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: '/etc/passwd',
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toContain('must resolve inside');
     });
   });
 

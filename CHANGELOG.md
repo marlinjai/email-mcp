@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-08-31
+
+Merged four community contributions (thank you [@EduardF1](https://github.com/EduardF1) and [@JosueM1109](https://github.com/JosueM1109)):
+
+### Fixed
+- **IMAP/iCloud auto-reconnect after idle/server-side disconnect** (#11) — the adapter no longer throws "Not connected" after a dropped socket; it transparently rebuilds the connection on the next call, with concurrent callers sharing a single in-flight reconnect.
+- **iCloud `search()` silently returned nothing for Junk/Trash** (#9) — iCloud reports `exists: 0` on `SELECT` for those folders even when they have messages. Now confirmed with `STATUS` before short-circuiting. This also repairs 17 IMAP/iCloud tests that were red on `main` (stale `fetchAll` mocks left behind when the adapter migrated off the old `fetch()` API) — full suite is green again.
+- **`credentials.enc` could become permanently undecryptable after a hostname change** (#8, fixes #4) — the encryption key was derived from `os.hostname()`, which macOS can silently renumber (mDNS/Bonjour naming conflicts). Now derived from a stable machine identifier (`IOPlatformUUID` on macOS, `/etc/machine-id` on Linux, `MachineGuid` on Windows), with an `EMAIL_MCP_KEY` env var override for full portability. Existing credential files decrypt via the legacy seed and are transparently re-encrypted with the new one — no manual recovery needed.
+- **`createDraft` failed on Gmail connected via generic IMAP** (#7, fixes #3) — hardcoded a top-level `Drafts` folder, which doesn't exist on Gmail (`[Gmail]/Drafts` or a localized name like `[Gmail]/Entwürfe`). Now resolved via the adapter's existing `resolveFolder()` helper.
+
+### Added
+- **`email_save_attachment` tool** (from #5, adapted) — downloads an attachment directly to disk and returns metadata only, avoiding the token cost of round-tripping large attachments as base64 through the calling LLM. The output path is restricted to a configurable base directory (`EMAIL_MCP_DOWNLOADS_DIR`, defaulting to `~/.email-mcp/downloads`) with path-traversal rejected — the original PR accepted any absolute path from the tool caller with no validation, which would have let a malicious or manipulated prompt write to arbitrary locations on the host filesystem.
+
 ## [1.4.4] - 2026-08-30
 
 ### Fixed
