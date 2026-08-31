@@ -70,6 +70,7 @@ vi.mock('imapflow', () => {
     logout = vi.fn().mockResolvedValue(undefined);
     list = vi.fn().mockResolvedValue(mockFolders);
     usable = true;
+    on = vi.fn();
 
     search = vi.fn().mockImplementation(() => Promise.resolve(mockSearchResult));
     noop = vi.fn().mockResolvedValue(undefined);
@@ -86,6 +87,27 @@ vi.mock('imapflow', () => {
           yield msg;
         }
       }
+    });
+
+    // ImapFlow.fetchAll() resolves to an array (used by the adapter for body
+    // fetches and the UID-collection fallback). The adapter passes a
+    // comma-joined UID list for body fetches and a sequence range (e.g. '1:*')
+    // for the fallback, so mirror that here: filter by UID for a comma list,
+    // otherwise return every message.
+    fetchAll = vi.fn().mockImplementation((range: number[] | string) => {
+      let uidSet: Set<number> | null = null;
+      if (Array.isArray(range)) {
+        uidSet = new Set(range);
+      } else if (typeof range === 'string' && range.includes(',')) {
+        uidSet = new Set(range.split(',').map((n) => parseInt(n, 10)));
+      }
+      const out: any[] = [];
+      for (const msg of mockFetchMessages) {
+        if (!uidSet || uidSet.has(msg.uid)) {
+          out.push(msg);
+        }
+      }
+      return Promise.resolve(out);
     });
 
     fetchOne = vi.fn().mockImplementation(() => {
