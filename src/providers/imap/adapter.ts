@@ -513,7 +513,11 @@ export class ImapAdapter implements EmailProvider {
     lines.push(params.body.text || '');
 
     const rawMessage = lines.join('\r\n');
-    const result = await this.client.append('Drafts', rawMessage, ['\\Draft', '\\Seen']);
+    // Resolve the real drafts mailbox instead of assuming a top-level "Drafts"
+    // folder. Gmail (and localized accounts) expose it as "[Gmail]/Drafts" /
+    // "[Gmail]/Entwürfe", so a hardcoded path makes append fail. See issue #3.
+    const draftsFolder = await this.resolveFolder('Drafts');
+    const result = await this.client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
     return { id: String(result.uid || result) };
   }
 

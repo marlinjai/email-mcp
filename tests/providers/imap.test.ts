@@ -539,6 +539,63 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     expect(drafts).toHaveLength(1);
   });
 
+  // Regression: Gmail exposes drafts via IMAP under "[Gmail]/Drafts" (or a
+  // localized name like "[Gmail]/Entwürfe"), not a top-level "Drafts" mailbox.
+  // createDraft/listDrafts must resolve the real folder instead of hardcoding
+  // "Drafts", otherwise both operations fail on Gmail accounts. See issue #3.
+  const gmailFolders = [
+    { path: 'INBOX', name: 'INBOX', specialUse: '\\Inbox' },
+    { path: '[Gmail]/Drafts', name: 'Drafts', specialUse: '\\Drafts' },
+    { path: '[Gmail]/Sent Mail', name: 'Sent Mail', specialUse: '\\Sent' },
+    { path: '[Gmail]/Trash', name: 'Trash', specialUse: '\\Trash' },
+  ];
+
+  it('createDraft resolves the Gmail drafts folder before appending', async () => {
+    const client = (adapter as any).client;
+    client.list.mockResolvedValue(gmailFolders);
+
+    await adapter.createDraft({
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Draft subject',
+      body: { text: 'Draft body' },
+    });
+
+    expect(client.append).toHaveBeenCalledWith(
+      '[Gmail]/Drafts',
+      expect.any(String),
+      expect.arrayContaining(['\\Draft', '\\Seen']),
+    );
+  });
+
+  it('createDraft resolves a localized Gmail drafts folder via special-use flag', async () => {
+    const client = (adapter as any).client;
+    client.list.mockResolvedValue([
+      { path: 'INBOX', name: 'INBOX', specialUse: '\\Inbox' },
+      { path: '[Gmail]/Entwürfe', name: 'Entwürfe', specialUse: '\\Drafts' },
+    ]);
+
+    await adapter.createDraft({
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Draft subject',
+      body: { text: 'Draft body' },
+    });
+
+    expect(client.append).toHaveBeenCalledWith(
+      '[Gmail]/Entwürfe',
+      expect.any(String),
+      expect.arrayContaining(['\\Draft', '\\Seen']),
+    );
+  });
+
+  it('listDrafts resolves the Gmail drafts folder before searching', async () => {
+    const client = (adapter as any).client;
+    client.list.mockResolvedValue(gmailFolders);
+
+    await adapter.listDrafts();
+
+    expect(client.getMailboxLock).toHaveBeenCalledWith('[Gmail]/Drafts');
+  });
+
   it('getAttachment fetches email and extracts attachment', async () => {
     // Override simpleParser mock for this test to return an attachment
     const { simpleParser: mockParser } = await import('mailparser');
