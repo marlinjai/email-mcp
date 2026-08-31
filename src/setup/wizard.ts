@@ -3,7 +3,7 @@ import { exec } from 'node:child_process';
 import { askText, askValidated, askConfirm, askChoice, askPassword, closePrompts } from './prompts.js';
 import { CredentialStore } from '../auth/credential-store.js';
 import { OAuthCallbackServer } from '../auth/oauth-server.js';
-import { GmailAuth } from '../providers/gmail/auth.js';
+import { GmailAuth, type GmailScopeMode } from '../providers/gmail/auth.js';
 import { OutlookAuth } from '../providers/outlook/auth.js';
 import type { AccountCredentials, ProviderTypeValue } from '../models/types.js';
 import { ProviderType } from '../models/types.js';
@@ -64,16 +64,33 @@ async function promptAccountName(defaultName: string): Promise<string> {
 // Gmail Setup
 // ---------------------------------------------------------------------------
 
-async function setupGmail(): Promise<void> {
+async function setupGmail(scopeModeFlag?: GmailScopeMode): Promise<void> {
   console.log('\n--- Gmail Setup ---');
+  if (process.env.EMAIL_MCP_GMAIL_CLIENT_ID) {
+    console.log('Using your own Google OAuth Client ID (EMAIL_MCP_GMAIL_CLIENT_ID).');
+  }
   console.log('A browser window will open for Google authorization.\n');
+
+  let scopeMode = scopeModeFlag;
+  if (!scopeMode) {
+    scopeMode = await askChoice<GmailScopeMode>('Gmail permission scope:', [
+      {
+        name: 'Full (default) — includes permanent delete, bypassing Trash',
+        value: 'full',
+      },
+      {
+        name: 'Restricted — read/send/label/archive/trash only, no permanent delete',
+        value: 'restricted',
+      },
+    ]);
+  }
 
   const server = new OAuthCallbackServer();
   const port = await server.start();
   const redirectUri = `http://localhost:${port}/callback`;
 
   const gmailAuth = new GmailAuth(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, redirectUri);
-  const { url, codeVerifier } = gmailAuth.getAuthUrl(redirectUri);
+  const { url, codeVerifier } = gmailAuth.getAuthUrl(redirectUri, scopeMode);
 
   console.log('\nOpening browser for Google authorization...');
   console.log(`If the browser does not open, visit:\n${url}\n`);
@@ -327,6 +344,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Handle --scope <full|restricted>, applied to Gmail setup without prompting
+  const scopeIdx = args.indexOf('--scope');
+  let scopeModeFlag: GmailScopeMode | undefined;
+  if (scopeIdx !== -1) {
+    const value = args[scopeIdx + 1];
+    if (value === 'full' || value === 'restricted') {
+      scopeModeFlag = value;
+    } else {
+      console.error('Usage: --scope <full|restricted>');
+      process.exit(1);
+    }
+  }
+
   // Interactive wizard
   console.log('@marlinjai/email-mcp Account Setup\n');
 
@@ -341,7 +371,7 @@ async function main(): Promise<void> {
 
     switch (provider as ProviderTypeValue) {
       case ProviderType.Gmail:
-        await setupGmail();
+        await setupGmail(scopeModeFlag);
         break;
       case ProviderType.Outlook:
         await setupOutlook();

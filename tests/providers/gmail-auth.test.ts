@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GmailAuth } from '../../src/providers/gmail/auth.js';
+
+let lastGeneratedScopes: string[] = [];
 
 // Mock google-auth-library
 vi.mock('google-auth-library', () => {
@@ -15,7 +17,8 @@ vi.mock('google-auth-library', () => {
       this._redirectUri = redirectUri;
     }
 
-    generateAuthUrl() {
+    generateAuthUrl(opts: { scope: string[] }) {
+      lastGeneratedScopes = opts.scope;
       return 'https://accounts.google.com/o/oauth2/v2/auth?mock=true';
     }
 
@@ -46,7 +49,13 @@ describe('GmailAuth', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    lastGeneratedScopes = [];
+    delete process.env.EMAIL_MCP_GMAIL_SCOPE;
     auth = new GmailAuth('test-client-id', 'test-client-secret');
+  });
+
+  afterEach(() => {
+    delete process.env.EMAIL_MCP_GMAIL_SCOPE;
   });
 
   describe('getAuthUrl', () => {
@@ -55,6 +64,32 @@ describe('GmailAuth', () => {
       expect(url).toContain('https://accounts.google.com');
       expect(typeof codeVerifier).toBe('string');
       expect(codeVerifier.length).toBeGreaterThan(0);
+    });
+
+    it('defaults to the full scope set, including mail.google.com', () => {
+      auth.getAuthUrl('http://localhost:3000/callback');
+      expect(lastGeneratedScopes).toContain('https://mail.google.com/');
+      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.modify');
+      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.settings.basic');
+    });
+
+    it('drops mail.google.com when scopeMode is "restricted"', () => {
+      auth.getAuthUrl('http://localhost:3000/callback', 'restricted');
+      expect(lastGeneratedScopes).not.toContain('https://mail.google.com/');
+      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.modify');
+      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.settings.basic');
+    });
+
+    it('honors EMAIL_MCP_GMAIL_SCOPE=restricted when no explicit mode is passed', () => {
+      process.env.EMAIL_MCP_GMAIL_SCOPE = 'restricted';
+      auth.getAuthUrl('http://localhost:3000/callback');
+      expect(lastGeneratedScopes).not.toContain('https://mail.google.com/');
+    });
+
+    it('an explicit scopeMode argument overrides EMAIL_MCP_GMAIL_SCOPE', () => {
+      process.env.EMAIL_MCP_GMAIL_SCOPE = 'restricted';
+      auth.getAuthUrl('http://localhost:3000/callback', 'full');
+      expect(lastGeneratedScopes).toContain('https://mail.google.com/');
     });
   });
 

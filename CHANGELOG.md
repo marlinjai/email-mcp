@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-08-31
+
+Implements #10 (thank you [@markfelling](https://github.com/markfelling)).
+
+### Added
+- **Bring-your-own Google/Microsoft OAuth app** — set `EMAIL_MCP_GMAIL_CLIENT_ID` / `EMAIL_MCP_GMAIL_CLIENT_SECRET` (and, for Outlook, `EMAIL_MCP_OUTLOOK_CLIENT_ID`) to use your own Cloud Console/Azure Portal app instead of the shared one shipped in `src/oauth-config.ts`. Fully backwards-compatible: unset, behavior is unchanged. Gives you your own token lifecycle independent of the publisher's Cloud project, and lets you sidestep Google's unverified-app warning and 100-test-user cap on an OAuth app you control yourself.
+- **Restricted Gmail permission scope** — the setup wizard now asks Full (default, unchanged) vs. Restricted before authorizing Gmail. Restricted drops `https://mail.google.com/` (Gmail's maximum-permission scope, which Google's own docs flag as covering immediate, Trash-bypassing permanent deletion) and keeps only `gmail.modify` + `gmail.settings.basic`. Every tool behaves identically under Restricted except an explicit `permanent: true` delete, which now fails with a Gmail API 403 instead of succeeding. Skip the prompt with `--scope full`/`--scope restricted` on `email-mcp-setup`, or set `EMAIL_MCP_GMAIL_SCOPE=restricted`.
+
 ## [1.5.1] - 2026-08-31
 
 ### Added

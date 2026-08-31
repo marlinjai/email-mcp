@@ -62,11 +62,19 @@ No configuration needed — the setup wizard handles everything using built-in O
 ```bash
 npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 # Select "Gmail" when prompted
+# Choose "Full" or "Restricted" permission scope when asked
 # A browser window opens for Google authorization
 # Grant the requested permissions and return to the terminal
 ```
 
-> **Note:** If you prefer to use your own OAuth app, create a Desktop OAuth 2.0 Client in the [Google Cloud Console](https://console.cloud.google.com/) with the Gmail API enabled.
+The wizard asks which Gmail permission scope to authorize:
+
+- **Full** (default) — everything below, plus immediate, Trash-bypassing permanent deletion (`https://mail.google.com/`, Gmail's maximum-permission scope).
+- **Restricted** — read, send, label, archive, and move-to-trash (`gmail.modify` + `gmail.settings.basic`), but no permanent deletion. Every tool in this server works identically under Restricted except an explicit `permanent: true` delete, which fails with a Gmail API error instead of succeeding.
+
+Pass `--scope full` or `--scope restricted` to skip the prompt, or set `EMAIL_MCP_GMAIL_SCOPE=restricted` in the environment the wizard runs in.
+
+> **Note:** If you prefer to use your own OAuth app instead of the shared one this package ships with, create a Desktop OAuth 2.0 Client in the [Google Cloud Console](https://console.cloud.google.com/) with the Gmail API enabled, then set `EMAIL_MCP_GMAIL_CLIENT_ID` and `EMAIL_MCP_GMAIL_CLIENT_SECRET` in the environment before running the setup wizard (and in the MCP server's environment, since re-authentication uses the same variables). This gives you your own token lifecycle, independent of the publisher's Cloud project, and sidesteps Google's unverified-app warning and 100-test-user cap for your own account(s) once you add yourself as a test user on your own app.
 
 ### Outlook
 
@@ -79,7 +87,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 # Sign in and grant the requested permissions
 ```
 
-> **Note:** If you prefer to use your own OAuth app, register one in the [Azure Portal](https://portal.azure.com/) with `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.ReadWrite` (needed for `email_create_block_rule`), and `offline_access` permissions.
+> **Note:** If you prefer to use your own OAuth app, register one in the [Azure Portal](https://portal.azure.com/) with `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.ReadWrite` (needed for `email_create_block_rule`), and `offline_access` permissions, then set `EMAIL_MCP_OUTLOOK_CLIENT_ID` in the environment before running the setup wizard.
 
 ### iCloud
 

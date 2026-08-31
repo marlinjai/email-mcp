@@ -2,14 +2,38 @@ import { OAuth2Client } from 'google-auth-library';
 import crypto from 'node:crypto';
 import type { OAuthTokens } from '../../models/types.js';
 
-const GMAIL_SCOPES = [
-  'https://mail.google.com/',
-  'https://www.googleapis.com/auth/gmail.modify',
-  // Mailbox content access (above) does NOT cover the Settings API —
-  // Google treats them as separate permission domains. Needed for
-  // users.settings.filters.* (email_create_block_rule/list/delete).
-  'https://www.googleapis.com/auth/gmail.settings.basic',
-];
+export type GmailScopeMode = 'full' | 'restricted';
+
+const GMAIL_SCOPES: Record<GmailScopeMode, string[]> = {
+  full: [
+    // Gmail's maximum-permission scope. Superset of gmail.modify below;
+    // the only capability it adds is immediate, trash-bypassing permanent
+    // deletion (messages.delete / batchDelete with permanent: true).
+    'https://mail.google.com/',
+    'https://www.googleapis.com/auth/gmail.modify',
+    // Mailbox content access (above) does NOT cover the Settings API —
+    // Google treats them as separate permission domains. Needed for
+    // users.settings.filters.* (email_create_block_rule/list/delete).
+    'https://www.googleapis.com/auth/gmail.settings.basic',
+  ],
+  // Drops https://mail.google.com/ so an AI-triggered permanent delete
+  // can't happen: gmail.modify already covers every other read/write
+  // operation this server performs (read, send, label, archive, trash,
+  // drafts, filters). Choosing this mode means deleteEmail(..., permanent:
+  // true) and batchDelete(..., permanent: true) will fail with a Gmail API
+  // 403 instead of succeeding — everything else behaves identically.
+  restricted: [
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/gmail.settings.basic',
+  ],
+};
+
+function resolveScopeMode(explicit?: GmailScopeMode): GmailScopeMode {
+  if (explicit) return explicit;
+  return process.env.EMAIL_MCP_GMAIL_SCOPE?.toLowerCase() === 'restricted'
+    ? 'restricted'
+    : 'full';
+}
 
 export class GmailAuth {
   private clientId: string;
@@ -22,7 +46,10 @@ export class GmailAuth {
     this.oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
   }
 
-  getAuthUrl(redirectUri: string): { url: string; codeVerifier: string } {
+  getAuthUrl(
+    redirectUri: string,
+    scopeMode?: GmailScopeMode,
+  ): { url: string; codeVerifier: string } {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto
       .createHash('sha256')
@@ -34,7 +61,7 @@ export class GmailAuth {
 
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
-      scope: GMAIL_SCOPES,
+      scope: GMAIL_SCOPES[resolveScopeMode(scopeMode)],
       prompt: 'consent',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
