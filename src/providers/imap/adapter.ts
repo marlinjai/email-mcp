@@ -576,10 +576,7 @@ export class ImapAdapter implements EmailProvider {
     return { id: messageId };
   }
 
-  async createDraft(params: SendEmailParams): Promise<{ id: string }> {
-    const client = await this.ensureConnected();
-
-    // Build RFC 2822 message
+  private buildDraftRfc2822(params: SendEmailParams): string {
     const lines: string[] = [];
     lines.push(`From: ${this.email}`);
     lines.push(`To: ${params.to.map((c) => (c.name ? `"${c.name}" <${c.email}>` : c.email)).join(', ')}`);
@@ -594,14 +591,47 @@ export class ImapAdapter implements EmailProvider {
     lines.push('Content-Type: text/plain; charset=utf-8');
     lines.push('');
     lines.push(params.body.text || '');
+    return lines.join('\r\n');
+  }
 
-    const rawMessage = lines.join('\r\n');
+  async createDraft(params: SendEmailParams): Promise<{ id: string }> {
+    const client = await this.ensureConnected();
+
+    const rawMessage = this.buildDraftRfc2822(params);
     // Resolve the real drafts mailbox instead of assuming a top-level "Drafts"
     // folder. Gmail (and localized accounts) expose it as "[Gmail]/Drafts" /
     // "[Gmail]/Entwürfe", so a hardcoded path makes append fail. See issue #3.
     const draftsFolder = await this.resolveFolder('Drafts');
     const result = await client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
     if (!result) throw new Error('Failed to append draft');
+    return { id: String(result.uid || result) };
+  }
+
+  /**
+   * IMAP has no in-place message update — a draft is just a message in the
+   * Drafts folder, and IMAP messages are immutable once appended. This
+   * deletes the old revision and appends a new one, so the returned `id`
+   * is a NEW uid; the old id no longer resolves after this call.
+   */
+  async updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }> {
+    const client = await this.ensureConnected();
+    const draftsFolder = sourceFolder ? await this.resolveFolder(sourceFolder) : await this.resolveFolder('Drafts');
+
+    let lock;
+    try {
+      lock = await client.getMailboxLock(draftsFolder);
+    } catch (error: any) {
+      throw formatImapError(error, `Failed to open folder "${draftsFolder}"`);
+    }
+    try {
+      await client.messageDelete(draftId, { uid: true });
+    } finally {
+      lock.release();
+    }
+
+    const rawMessage = this.buildDraftRfc2822(params);
+    const result = await client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
+    if (!result) throw new Error('Failed to append updated draft');
     return { id: String(result.uid || result) };
   }
 

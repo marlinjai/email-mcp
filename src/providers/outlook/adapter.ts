@@ -234,6 +234,14 @@ export class OutlookAdapter implements EmailProvider {
     return { id: result.id };
   }
 
+  async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
+    const client = this.ensureClient();
+    const message = this.buildGraphMessage(params);
+
+    await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(message);
+    return { id: draftId };
+  }
+
   async listDrafts(limit?: number, offset?: number): Promise<Email[]> {
     const client = this.ensureClient();
     let request = client.api('/me/mailFolders/drafts/messages');

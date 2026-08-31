@@ -105,7 +105,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 # Optionally enter SMTP host and port for sending
 ```
 
-## Available Tools (31)
+## Available Tools (32)
 
 ### Account Management (4)
 
@@ -127,7 +127,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 | `email_get_attachment` | Download a specific attachment by ID (returns base64 data) |
 | `email_save_attachment` | Download an attachment directly to disk, returning metadata only — avoids the token cost of round-tripping large files as base64. `outputPath` is relative to a fixed downloads directory (`~/.email-mcp/downloads`, override with `EMAIL_MCP_DOWNLOADS_DIR`) and cannot escape it |
 
-### Sending & Drafts (5)
+### Sending & Drafts (6)
 
 | Tool | Description |
 |------|-------------|
@@ -135,6 +135,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 | `email_reply` | Reply to an email (supports reply-all, preserves threading) |
 | `email_forward` | Forward an email to new recipients |
 | `email_draft_create` | Save a draft without sending |
+| `email_draft_update` | Update an existing draft in place. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended — the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 
 ### Organization (8)

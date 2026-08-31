@@ -39,6 +39,7 @@ function makeMockProvider(overrides: Partial<EmailProvider> = {}): EmailProvider
     getAttachment: vi.fn(),
     sendEmail: vi.fn().mockResolvedValue({ id: 'sent-1', threadId: 'thread-1' }),
     createDraft: vi.fn().mockResolvedValue({ id: 'draft-1' }),
+    updateDraft: vi.fn().mockResolvedValue({ id: 'draft-1' }),
     listDrafts: vi.fn().mockResolvedValue([]),
     moveEmail: vi.fn(),
     deleteEmail: vi.fn(),
@@ -330,6 +331,53 @@ describe('Sending tools', () => {
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe('draft-1');
+    });
+  });
+
+  describe('email_draft_update', () => {
+    it('is registered', () => {
+      expect(hasRegisteredTool(server, 'email_draft_update')).toBe(true);
+    });
+
+    it('calls provider.updateDraft with correct params', async () => {
+      const result = await callTool(server, 'email_draft_update', {
+        accountId: 'acct-1',
+        draftId: 'draft-1',
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Updated Draft Subject',
+        body: { text: 'Updated draft body' },
+      });
+
+      expect(accountManager.getProvider).toHaveBeenCalledWith('acct-1');
+      expect(mockProvider.updateDraft).toHaveBeenCalledWith(
+        'draft-1',
+        expect.objectContaining({
+          to: [{ email: 'bob@example.com' }],
+          subject: 'Updated Draft Subject',
+          body: { text: 'Updated draft body' },
+        }),
+        undefined,
+      );
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.id).toBe('draft-1');
+    });
+
+    it('returns error when provider.updateDraft throws (e.g. draft not found)', async () => {
+      (mockProvider.updateDraft as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Draft not found'),
+      );
+
+      const result = await callTool(server, 'email_draft_update', {
+        accountId: 'acct-1',
+        draftId: 'nonexistent',
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Subject',
+        body: { text: 'Body' },
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error).toContain('Draft not found');
     });
   });
 

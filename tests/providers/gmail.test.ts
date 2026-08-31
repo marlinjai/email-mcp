@@ -106,6 +106,7 @@ const mockMessagesInsert = vi.fn();
 const mockAttachmentsGet = vi.fn();
 const mockThreadsGet = vi.fn();
 const mockDraftsCreate = vi.fn();
+const mockDraftsUpdate = vi.fn();
 const mockDraftsList = vi.fn();
 const mockDraftsGet = vi.fn();
 const mockFiltersCreate = vi.fn();
@@ -129,7 +130,7 @@ vi.mock('googleapis', () => ({
           attachments: { get: mockAttachmentsGet },
         },
         threads: { get: mockThreadsGet },
-        drafts: { create: mockDraftsCreate, list: mockDraftsList, get: mockDraftsGet },
+        drafts: { create: mockDraftsCreate, update: mockDraftsUpdate, list: mockDraftsList, get: mockDraftsGet },
         settings: {
           filters: { create: mockFiltersCreate, list: mockFiltersList, delete: mockFiltersDelete },
         },
@@ -183,6 +184,7 @@ function resetMocks() {
   mockAttachmentsGet.mockResolvedValue({ data: { data: Buffer.from('file-content').toString('base64url'), size: 12 } });
   mockThreadsGet.mockResolvedValue({ data: mockThread });
   mockDraftsCreate.mockResolvedValue({ data: { id: 'draft-1', message: { id: 'msg-draft-1' } } });
+  mockDraftsUpdate.mockResolvedValue({ data: { id: 'draft-1', message: { id: 'msg-draft-1-v2' } } });
   mockDraftsList.mockResolvedValue({
     data: { drafts: [{ id: 'draft-1', message: { id: 'msg-draft-1' } }] },
   });
@@ -458,6 +460,25 @@ describe('GmailAdapter', () => {
 
       expect(result.id).toBe('draft-1');
       expect(mockDraftsCreate).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateDraft', () => {
+    it('updates the draft in place via Gmail API, id unchanged', async () => {
+      const result = await adapter.updateDraft('draft-1', {
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Updated Draft',
+        body: { text: 'Updated content' },
+      });
+
+      expect(result.id).toBe('draft-1');
+      expect(mockDraftsUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'me',
+          id: 'draft-1',
+          requestBody: expect.objectContaining({ message: { raw: expect.any(String) } }),
+        }),
+      );
     });
   });
 

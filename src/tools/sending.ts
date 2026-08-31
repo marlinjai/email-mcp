@@ -194,6 +194,34 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     },
   );
 
+  // --- email_draft_update ---
+  server.tool(
+    'email_draft_update',
+    'Update an existing email draft in place (to/subject/body). On Gmail and Outlook the draft id is unchanged. On iCloud/generic IMAP there is no in-place update — the old draft is deleted and a new one appended — so the returned id is a NEW id and the old one no longer resolves; always use the id this call returns, not the one you passed in.',
+    {
+      accountId: z.string(),
+      draftId: z.string(),
+      to: z.array(ContactSchema),
+      subject: z.string(),
+      body: BodySchema,
+      sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when the draft is not in the default Drafts folder)'),
+    },
+    async (args) => {
+      try {
+        const provider = await accountManager.getProvider(args.accountId);
+        const params: SendEmailParams = {
+          to: args.to,
+          subject: args.subject,
+          body: args.body,
+        };
+        const result = await provider.updateDraft(args.draftId, params, args.sourceFolder);
+        return jsonResult(result);
+      } catch (error: any) {
+        return jsonResult({ error: error.message });
+      }
+    },
+  );
+
   // --- email_draft_list ---
   server.tool(
     'email_draft_list',

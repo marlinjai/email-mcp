@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-08-31
+
+### Added
+- **`email_draft_update` tool** — update an existing draft in place instead of the previous delete-and-recreate workaround. Gmail and Outlook update the draft message directly (`drafts.update` / `PATCH /me/messages/{id}`), so the id is unchanged. iCloud/generic IMAP have no in-place update primitive (IMAP messages are immutable once appended), so it's implemented there as delete-old + append-new — the returned id is a **new** id, and callers must use it going forward rather than the one passed in.
+
 ## [1.5.0] - 2026-08-31
 
 Merged four community contributions (thank you [@EduardF1](https://github.com/EduardF1) and [@JosueM1109](https://github.com/JosueM1109)):

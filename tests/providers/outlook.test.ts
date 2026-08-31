@@ -511,7 +511,36 @@ describe('OutlookAdapter', () => {
         expect.objectContaining({
           subject: 'Draft Subject',
           toRecipients: [{ emailAddress: { name: undefined, address: 'bob@test.com' } }],
-        })
+        }),
+      );
+    });
+  });
+
+  describe('updateDraft', () => {
+    it('calls PATCH /me/messages/{id} to update the draft in place', async () => {
+      const mockPatchRequest = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/draft-123', mockPatchRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.updateDraft('draft-123', {
+        to: [{ email: 'bob@test.com' }],
+        subject: 'Updated Subject',
+        body: { text: 'Updated body' },
+      });
+
+      expect(result.id).toBe('draft-123');
+      expect(mockPatchRequest.patch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: 'Updated Subject',
+          toRecipients: [{ emailAddress: { name: undefined, address: 'bob@test.com' } }],
+        }),
       );
     });
   });

@@ -40,6 +40,14 @@ export interface EmailProvider {
 
   sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }>;
   createDraft(params: SendEmailParams): Promise<{ id: string }>;
+  // Gmail and Outlook update the draft message in place, so `id` is
+  // unchanged on return. IMAP/iCloud have no in-place update primitive —
+  // a draft is just a message in the Drafts folder, and IMAP messages are
+  // immutable — so it's implemented there as delete-old + append-new,
+  // which means the returned `id` is a NEW id and the old one no longer
+  // resolves. Callers should always use the returned id going forward,
+  // never assume it matches the id passed in.
+  updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }>;
   listDrafts(limit?: number, offset?: number): Promise<Email[]>;
 
   moveEmail(emailId: string, targetFolder: string, sourceFolder?: string): Promise<void>;

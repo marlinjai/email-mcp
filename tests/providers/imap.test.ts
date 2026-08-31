@@ -540,6 +540,23 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     );
   });
 
+  it('updateDraft deletes the old revision and appends a new one, returning a new id', async () => {
+    const result = await adapter.updateDraft('99', {
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Updated subject',
+      body: { text: 'Updated body' },
+    });
+    expect(result.id).toBe('100'); // mocked append always resolves { uid: 100 }
+    const client = (adapter as any).client;
+    expect(client.getMailboxLock).toHaveBeenCalledWith('Drafts');
+    expect(client.messageDelete).toHaveBeenCalledWith('99', { uid: true });
+    expect(client.append).toHaveBeenCalledWith(
+      'Drafts',
+      expect.stringContaining('Updated subject'),
+      expect.arrayContaining(['\\Draft', '\\Seen']),
+    );
+  });
+
   it('listDrafts returns emails from Drafts folder', async () => {
     mockSearchResult = [10, 11];
     mockFetchMessages = [

@@ -223,6 +223,21 @@ export class GmailAdapter implements EmailProvider {
     return { id: res.data.id || '' };
   }
 
+  async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
+    const gmail = this.ensureConnected();
+    const raw = this.buildRfc2822(params);
+
+    const res = await gmail.users.drafts.update({
+      userId: 'me',
+      id: draftId,
+      requestBody: {
+        message: { raw },
+      },
+    });
+
+    return { id: res.data.id || draftId };
+  }
+
   async listDrafts(limit?: number, _offset?: number): Promise<Email[]> {
     const gmail = this.ensureConnected();
 
