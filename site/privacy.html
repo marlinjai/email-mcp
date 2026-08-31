@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Privacy policy: email-mcp</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="What email-mcp stores, what it sends, and where. The full privacy policy.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232f7d5e'/><path d='M18 30h64v40H18z' fill='none' stroke='white' stroke-width='7'/><path d='M18 32l32 24 32-24' fill='none' stroke='white' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="style.css">
+<script>try{var t=localStorage.getItem('email-mcp-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+    </span>
+    email-mcp
+  </a>
+  <nav><a href="/">Home</a> <button type="button" class="theme-toggle" aria-label="Toggle dark mode" data-theme-toggle>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.5A8.5 8.5 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5Z"/></svg>
+    </button></nav>
+</header>
+
+<main class="legal">
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated: 31 August 2026</p>
+
+  <p><strong>The short version: email-mcp runs on your own machine and has no server of
+  its own.</strong> It is an MCP (Model Context Protocol) server you install and run
+  locally, alongside an AI assistant like Claude. When it reads, sends or organizes
+  email, it calls Gmail's, Microsoft's, Apple's or your IMAP provider's API directly,
+  from your machine, using your own OAuth token or password. Nothing about your email
+  passes through a server we operate, because no such server exists in this flow.</p>
+
+  <h2>What email-mcp stores, and where</h2>
+  <ul>
+    <li><strong>Account credentials.</strong> OAuth tokens (Gmail, Outlook) or
+    passwords (iCloud, generic IMAP) are stored in an encrypted file on your own
+    machine (<code>~/.email-mcp/credentials.enc</code>), AES-256-GCM encrypted with a
+    key derived from your machine's own hardware identifier, or from the
+    <code>EMAIL_MCP_KEY</code> environment variable if you set one. This file never
+    leaves your machine and is not sent to us.</li>
+    <li><strong>Downloaded attachments</strong> saved via the <code>email_save_attachment</code>
+    tool are written to a local directory (<code>~/.email-mcp/downloads</code> by default,
+    configurable with <code>EMAIL_MCP_DOWNLOADS_DIR</code>) and go nowhere else.</li>
+    <li><strong>Email content itself is never stored by email-mcp.</strong> Messages are
+    fetched from your provider on demand, at the request of whichever AI assistant is
+    using the tool, and returned directly to that assistant. What that assistant's own
+    provider (e.g. Anthropic, for Claude) does with the content it receives is governed
+    by that provider's own privacy policy, not this one.</li>
+  </ul>
+
+  <h2>What email-mcp sends over the network, and to whom</h2>
+  <p>Exactly two kinds of outbound request exist, both initiated by your own machine:</p>
+  <ul>
+    <li><strong>To your email provider</strong> (Gmail's API, Microsoft Graph, or an IMAP/SMTP
+    server) — to authenticate, and to carry out whatever tool call you or your assistant
+    triggered (search, send, organize, and so on).</li>
+    <li><strong>To Google's or Microsoft's OAuth endpoints</strong> — the standard
+    authorization-code exchange during setup, and silent token refresh afterward. This
+    uses the shared OAuth Client ID this project ships with by default, or your own if
+    you set <code>EMAIL_MCP_GMAIL_CLIENT_ID</code>/<code>EMAIL_MCP_OUTLOOK_CLIENT_ID</code>.
+    A shared Client ID identifies the application to Google/Microsoft; it does not give
+    us visibility into your account, your tokens, or your mail.</li>
+  </ul>
+  <p>There is no third request. No analytics, no crash reporting, no telemetry, no
+  update-check phone-home. You can verify this yourself: the source is on
+  <a href="https://github.com/marlinjai/email-mcp">GitHub</a>.</p>
+
+  <h2>Gmail API scopes, specifically</h2>
+  <p>The setup wizard lets you choose between two Gmail permission levels. <strong>Full</strong>
+  (the default) requests <code>https://mail.google.com/</code>, <code>gmail.modify</code> and
+  <code>gmail.settings.basic</code>, which includes the ability to permanently delete
+  messages. <strong>Restricted</strong> drops the permanent-delete permission and keeps
+  only <code>gmail.modify</code> and <code>gmail.settings.basic</code>, which covers every
+  other tool this server exposes (read, send, label, archive, move to trash, manage
+  filters). Use of this data is limited to providing the email features you request
+  through your AI assistant, in accordance with the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API
+  Services User Data Policy</a>, including its Limited Use requirements.</p>
+
+  <h2>What we collect</h2>
+  <p>Nothing. There is no account with this project, no signup, and no server-side
+  logging of your usage, your email content, or your credentials.</p>
+
+  <h2>Third-party providers</h2>
+  <p>Your use of Gmail, Outlook/Microsoft 365, iCloud, or any IMAP provider through
+  email-mcp remains subject to that provider's own terms and privacy policy. email-mcp
+  is an independent client and is not affiliated with or endorsed by Google, Microsoft
+  or Apple.</p>
+
+  <h2>Data removal</h2>
+  <p>Uninstalling the package and deleting <code>~/.email-mcp</code> removes everything
+  email-mcp ever stored, because everything it stored lives on your machine. To revoke
+  its access to your Google or Microsoft account at the source, remove it from your
+  provider's own connected-apps settings (Google Account → Security → Third-party
+  access; Microsoft Account → Apps and services).</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the change will be visible on this page. The core
+  commitment, that email-mcp runs locally and reports nothing back to us, will not
+  change.</p>
+
+  <h2>Contact</h2>
+  <p>marlinjaipohl@gmail.com, or open an issue on
+  <a href="https://github.com/marlinjai/email-mcp/issues">GitHub</a>.</p>
+</main>
+<footer>
+  <p><a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/impressum">Impressum</a> · <a href="https://github.com/marlinjai/email-mcp">GitHub</a></p>
+</footer>
+<script>
+var themeToggle = document.querySelector('[data-theme-toggle]');
+if (themeToggle) {
+  themeToggle.addEventListener('click', function () {
+    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var current = document.documentElement.getAttribute('data-theme') || (prefersDark ? 'dark' : 'light');
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('email-mcp-theme', next); } catch (e) {}
+  });
+}
+</script>
+</body>
+</html>
