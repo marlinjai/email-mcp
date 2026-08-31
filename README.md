@@ -217,6 +217,25 @@ pnpm test:watch
 pnpm test:integration
 ```
 
+## Credential Storage
+
+Account credentials are encrypted at rest with AES-256-GCM in `~/.email-mcp/credentials.enc`.
+
+By default the encryption key is derived from a stable, machine-specific identifier
+(the hardware UUID on macOS, `/etc/machine-id` on Linux, or the `MachineGuid` on
+Windows), falling back to the hostname when none is available.
+
+Set the `EMAIL_MCP_KEY` environment variable to supply your own passphrase instead.
+This is recommended when the machine identifier may change (for example in
+containers or CI), or when you want to move `credentials.enc` between machines:
+
+```bash
+export EMAIL_MCP_KEY="your-strong-passphrase"
+```
+
+When `EMAIL_MCP_KEY` is set, existing credential files are transparently
+re-encrypted with the passphrase the next time they are read.
+
 ## Support
 
 If this project is useful to you, consider supporting its development:

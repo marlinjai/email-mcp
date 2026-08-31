@@ -123,4 +123,71 @@ describe('CredentialStore', () => {
     const all = await store.list();
     expect(all).toHaveLength(1);
   });
+
+  describe('encryption key stability (issue #4)', () => {
+    let savedEnvKey: string | undefined;
+
+    beforeEach(() => {
+      savedEnvKey = process.env.EMAIL_MCP_KEY;
+      delete process.env.EMAIL_MCP_KEY;
+    });
+
+    afterEach(() => {
+      if (savedEnvKey === undefined) {
+        delete process.env.EMAIL_MCP_KEY;
+      } else {
+        process.env.EMAIL_MCP_KEY = savedEnvKey;
+      }
+    });
+
+    const sampleCreds = (id: string) => ({
+      id,
+      name: 'Sample',
+      provider: ProviderType.Gmail as const,
+      email: `${id}@gmail.com`,
+      oauth: { access_token: 'a', refresh_token: 'r', expiry: '' },
+    });
+
+    it('encrypts and decrypts using EMAIL_MCP_KEY when provided', async () => {
+      process.env.EMAIL_MCP_KEY = 'a-portable-passphrase';
+      const s = new CredentialStore(testDir);
+      await s.save(sampleCreds('env-1'));
+
+      const s2 = new CredentialStore(testDir);
+      const loaded = await s2.get('env-1');
+      expect(loaded?.email).toBe('env-1@gmail.com');
+    });
+
+    it('migrates a legacy-seeded file to EMAIL_MCP_KEY on read', async () => {
+      // Written without an explicit key (machine/hostname-derived seed).
+      const legacyStore = new CredentialStore(testDir);
+      await legacyStore.save(sampleCreds('mig-1'));
+
+      // Now an explicit key is configured: the existing file must still be
+      // readable and should be transparently re-encrypted with the new key.
+      process.env.EMAIL_MCP_KEY = 'new-passphrase';
+      const upgraded = new CredentialStore(testDir);
+      expect((await upgraded.get('mig-1'))?.email).toBe('mig-1@gmail.com');
+
+      // After migration the on-disk file decrypts with the new key, even from a
+      // fresh instance, confirming the rewrite happened.
+      const afterMigration = new CredentialStore(testDir);
+      expect((await afterMigration.get('mig-1'))?.email).toBe('mig-1@gmail.com');
+
+      // ...and it can no longer be decrypted without the key.
+      delete process.env.EMAIL_MCP_KEY;
+      const withoutKey = new CredentialStore(testDir);
+      await expect(withoutKey.get('mig-1')).rejects.toThrow();
+    });
+
+    it('fails to decrypt with the wrong EMAIL_MCP_KEY', async () => {
+      process.env.EMAIL_MCP_KEY = 'correct-key';
+      const s = new CredentialStore(testDir);
+      await s.save(sampleCreds('wrong-1'));
+
+      process.env.EMAIL_MCP_KEY = 'a-different-key';
+      const s2 = new CredentialStore(testDir);
+      await expect(s2.get('wrong-1')).rejects.toThrow();
+    });
+  });
 });
