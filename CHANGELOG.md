@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-09-02
+
+### Added
+- **`email_batch_label` tool** — add/remove Gmail labels on multiple emails in one call, using a single native `batchModify` request instead of one `email_label` call per message. Falls back to sequential per-message calls only if the batch request itself fails. Matches the existing `email_batch_move`/`email_batch_mark`/`email_batch_delete` pattern; Gmail-only, same as `email_label`.
+
+### Fixed
+- **`email_folder_create` silently dropped `parentPath` on Gmail** — a call like `{ name: "Anthropic", parentPath: "Tech" }` reported success but created a flat `"Anthropic"` label instead of the nested `"Tech/Anthropic"`. Gmail has no real folder hierarchy; nesting is just a `/`-delimited label name, and the Gmail adapter's `createFolder` never read its own `parentPath` argument (Outlook and IMAP already handled this correctly). Now builds the full `parentPath/name` label name before creating it.
+
 ## [1.6.0] - 2026-08-31
 
 Implements #10 (thank you [@markfelling](https://github.com/markfelling)).

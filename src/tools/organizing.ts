@@ -191,6 +191,51 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     },
   );
 
+  // --- email_batch_label ---
+  server.tool(
+    'email_batch_label',
+    'Add or remove labels on multiple emails at once (Gmail only). Much faster than individual email_label calls.',
+    {
+      accountId: z.string(),
+      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to label'),
+      addLabels: z.array(z.string()).optional(),
+      removeLabels: z.array(z.string()).optional(),
+    },
+    async (args) => {
+      try {
+        const provider = await accountManager.getProvider(args.accountId);
+
+        if (!provider.addLabels || !provider.removeLabels) {
+          return jsonResult({
+            success: false,
+            error: 'email_batch_label is only supported on Gmail accounts',
+            supportedProviders: ['gmail'],
+          });
+        }
+
+        if (provider.batchLabel) {
+          const result = await provider.batchLabel(args.emailIds, args.addLabels, args.removeLabels);
+          return jsonResult({ success: true, ...result });
+        }
+
+        // Sequential fallback for providers without native batch support
+        const result: BatchResult = { succeeded: [], failed: [] };
+        for (const id of args.emailIds) {
+          try {
+            if (args.addLabels && args.addLabels.length > 0) await provider.addLabels(id, args.addLabels);
+            if (args.removeLabels && args.removeLabels.length > 0) await provider.removeLabels(id, args.removeLabels);
+            result.succeeded.push(id);
+          } catch (e: any) {
+            result.failed.push({ id, error: e.message });
+          }
+        }
+        return jsonResult({ success: true, ...result });
+      } catch (error: any) {
+        return jsonResult({ success: false, error: error.message });
+      }
+    },
+  );
+
   // --- email_transfer (cross-account) ---
   server.tool(
     'email_transfer',

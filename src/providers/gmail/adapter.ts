@@ -68,11 +68,14 @@ export class GmailAdapter implements EmailProvider {
     return labels.map(mapGmailLabel);
   }
 
-  async createFolder(name: string): Promise<Folder> {
+  async createFolder(name: string, parentPath?: string): Promise<Folder> {
     const gmail = this.ensureConnected();
+    // Gmail has no real folder hierarchy — nesting is purely a `/`-delimited
+    // label name (e.g. "Tech/Anthropic") that the UI renders as a tree.
+    const fullName = parentPath ? `${parentPath}/${name}` : name;
     const res = await gmail.users.labels.create({
       userId: 'me',
-      requestBody: { name },
+      requestBody: { name: fullName },
     });
     return mapGmailLabel(res.data);
   }
@@ -429,6 +432,39 @@ export class GmailAdapter implements EmailProvider {
       for (const id of emailIds) {
         try {
           await this.markEmail(id, flags);
+          result.succeeded.push(id);
+        } catch (e: any) {
+          result.failed.push({ id, error: e.message });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  async batchLabel(emailIds: string[], addLabels?: string[], removeLabels?: string[]): Promise<BatchResult> {
+    const gmail = this.ensureConnected();
+    const result: BatchResult = { succeeded: [], failed: [] };
+
+    const addLabelIds = addLabels ?? [];
+    const removeLabelIds = removeLabels ?? [];
+
+    if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+      result.succeeded = [...emailIds];
+      return result;
+    }
+
+    try {
+      await gmail.users.messages.batchModify({
+        userId: 'me',
+        requestBody: { ids: emailIds, addLabelIds, removeLabelIds },
+      });
+      result.succeeded = [...emailIds];
+    } catch (error: any) {
+      for (const id of emailIds) {
+        try {
+          if (addLabelIds.length > 0) await this.addLabels(id, addLabelIds);
+          if (removeLabelIds.length > 0) await this.removeLabels(id, removeLabelIds);
           result.succeeded.push(id);
         } catch (e: any) {
           result.failed.push({ id, error: e.message });

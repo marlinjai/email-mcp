@@ -318,6 +318,82 @@ describe('Organizing tools', () => {
     });
   });
 
+  describe('email_batch_label', () => {
+    it('is registered', () => {
+      expect(hasRegisteredTool(server, 'email_batch_label')).toBe(true);
+    });
+
+    it('uses provider.batchLabel when available', async () => {
+      const gmailProvider = makeGmailProvider();
+      (gmailProvider as any).batchLabel = vi.fn().mockResolvedValue({
+        succeeded: ['msg-1', 'msg-2'],
+        failed: [],
+      });
+      (accountManager.getProvider as ReturnType<typeof vi.fn>).mockResolvedValue(gmailProvider);
+
+      const result = await callTool(server, 'email_batch_label', {
+        accountId: 'acct-gmail',
+        emailIds: ['msg-1', 'msg-2'],
+        addLabels: ['Work'],
+        removeLabels: ['Personal'],
+      });
+
+      expect((gmailProvider as any).batchLabel).toHaveBeenCalledWith(['msg-1', 'msg-2'], ['Work'], ['Personal']);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.succeeded).toEqual(['msg-1', 'msg-2']);
+      expect(parsed.failed).toEqual([]);
+    });
+
+    it('falls back to sequential addLabels/removeLabels when provider has no batchLabel', async () => {
+      const gmailProvider = makeGmailProvider(); // no batchLabel method
+      (accountManager.getProvider as ReturnType<typeof vi.fn>).mockResolvedValue(gmailProvider);
+
+      const result = await callTool(server, 'email_batch_label', {
+        accountId: 'acct-gmail',
+        emailIds: ['msg-1', 'msg-2'],
+        addLabels: ['Work'],
+      });
+
+      expect(gmailProvider.addLabels).toHaveBeenCalledWith('msg-1', ['Work']);
+      expect(gmailProvider.addLabels).toHaveBeenCalledWith('msg-2', ['Work']);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.succeeded).toEqual(['msg-1', 'msg-2']);
+    });
+
+    it('reports per-message failures in the sequential fallback', async () => {
+      const gmailProvider = makeGmailProvider();
+      (gmailProvider.addLabels as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('failed'));
+      (accountManager.getProvider as ReturnType<typeof vi.fn>).mockResolvedValue(gmailProvider);
+
+      const result = await callTool(server, 'email_batch_label', {
+        accountId: 'acct-gmail',
+        emailIds: ['msg-1', 'msg-2'],
+        addLabels: ['Work'],
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.succeeded).toEqual(['msg-2']);
+      expect(parsed.failed).toEqual([{ id: 'msg-1', error: 'failed' }]);
+    });
+
+    it('returns not supported for providers without addLabels/removeLabels', async () => {
+      const result = await callTool(server, 'email_batch_label', {
+        accountId: 'acct-imap',
+        emailIds: ['msg-1'],
+        addLabels: ['Work'],
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('email_batch_label');
+      expect(parsed.supportedProviders).toEqual(['gmail']);
+    });
+  });
+
   describe('email_folder_create', () => {
     it('is registered', () => {
       expect(hasRegisteredTool(server, 'email_folder_create')).toBe(true);

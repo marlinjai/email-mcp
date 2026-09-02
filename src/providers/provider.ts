@@ -58,6 +58,7 @@ export interface EmailProvider {
   batchDelete?(emailIds: string[], permanent?: boolean, sourceFolder?: string): Promise<BatchResult>;
   batchMove?(emailIds: string[], targetFolder: string, sourceFolder?: string): Promise<BatchResult>;
   batchMark?(emailIds: string[], flags: { read?: boolean; starred?: boolean; flagged?: boolean }, sourceFolder?: string): Promise<BatchResult>;
+  batchLabel?(emailIds: string[], addLabels?: string[], removeLabels?: string[]): Promise<BatchResult>;
 
   // Raw MIME transfer primitives (used for cross-account moves).
   // getRawMessage returns the full RFC822 message bytes.

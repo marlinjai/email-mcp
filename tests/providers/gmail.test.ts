@@ -102,6 +102,7 @@ const mockMessagesSend = vi.fn();
 const mockMessagesTrash = vi.fn();
 const mockMessagesDelete = vi.fn();
 const mockMessagesModify = vi.fn();
+const mockMessagesBatchModify = vi.fn();
 const mockMessagesInsert = vi.fn();
 const mockAttachmentsGet = vi.fn();
 const mockThreadsGet = vi.fn();
@@ -126,6 +127,7 @@ vi.mock('googleapis', () => ({
           trash: mockMessagesTrash,
           delete: mockMessagesDelete,
           modify: mockMessagesModify,
+          batchModify: mockMessagesBatchModify,
           insert: mockMessagesInsert,
           attachments: { get: mockAttachmentsGet },
         },
@@ -180,6 +182,7 @@ function resetMocks() {
   mockMessagesTrash.mockResolvedValue({ data: {} });
   mockMessagesDelete.mockResolvedValue({ data: {} });
   mockMessagesModify.mockResolvedValue({ data: {} });
+  mockMessagesBatchModify.mockResolvedValue({ data: {} });
   mockMessagesInsert.mockResolvedValue({ data: { id: 'inserted-1', threadId: 'thread-inserted-1' } });
   mockAttachmentsGet.mockResolvedValue({ data: { data: Buffer.from('file-content').toString('base64url'), size: 12 } });
   mockThreadsGet.mockResolvedValue({ data: mockThread });
@@ -249,6 +252,76 @@ describe('GmailAdapter', () => {
       const userLabel = folders.find((f) => f.id === 'Label_1');
       expect(userLabel!.name).toBe('Work');
       expect(userLabel!.type).toBe('other');
+    });
+  });
+
+  describe('createFolder', () => {
+    it('creates a flat label when no parentPath is given', async () => {
+      await adapter.createFolder('Anthropic');
+      expect(mockLabelsCreate).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: { name: 'Anthropic' },
+      });
+    });
+
+    it('nests the label under parentPath using Gmail\'s "/" naming convention', async () => {
+      await adapter.createFolder('Anthropic', 'Tech');
+      expect(mockLabelsCreate).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: { name: 'Tech/Anthropic' },
+      });
+    });
+
+    it('supports an already-nested parentPath', async () => {
+      await adapter.createFolder('Daily Productivity', 'Newsletters/Ali Abdall');
+      expect(mockLabelsCreate).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: { name: 'Newsletters/Ali Abdall/Daily Productivity' },
+      });
+    });
+  });
+
+  describe('batchLabel', () => {
+    it('adds and removes labels in a single batchModify call', async () => {
+      const result = await adapter.batchLabel(['msg-1', 'msg-2'], ['Label_52'], ['INBOX']);
+
+      expect(mockMessagesBatchModify).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: { ids: ['msg-1', 'msg-2'], addLabelIds: ['Label_52'], removeLabelIds: ['INBOX'] },
+      });
+      expect(result.succeeded).toEqual(['msg-1', 'msg-2']);
+      expect(result.failed).toEqual([]);
+    });
+
+    it('is a no-op success when no labels are given', async () => {
+      const result = await adapter.batchLabel(['msg-1']);
+      expect(mockMessagesBatchModify).not.toHaveBeenCalled();
+      expect(result.succeeded).toEqual(['msg-1']);
+    });
+
+    it('falls back to per-message modify calls when batchModify fails', async () => {
+      mockMessagesBatchModify.mockRejectedValueOnce(new Error('batch failed'));
+
+      const result = await adapter.batchLabel(['msg-1', 'msg-2'], ['Label_52']);
+
+      expect(mockMessagesModify).toHaveBeenCalledTimes(2);
+      expect(mockMessagesModify).toHaveBeenCalledWith({
+        userId: 'me',
+        id: 'msg-1',
+        requestBody: { addLabelIds: ['Label_52'] },
+      });
+      expect(result.succeeded).toEqual(['msg-1', 'msg-2']);
+      expect(result.failed).toEqual([]);
+    });
+
+    it('reports per-message failures in the fallback path', async () => {
+      mockMessagesBatchModify.mockRejectedValueOnce(new Error('batch failed'));
+      mockMessagesModify.mockRejectedValueOnce(new Error('modify failed for msg-1'));
+
+      const result = await adapter.batchLabel(['msg-1', 'msg-2'], ['Label_52']);
+
+      expect(result.succeeded).toEqual(['msg-2']);
+      expect(result.failed).toEqual([{ id: 'msg-1', error: 'modify failed for msg-1' }]);
     });
   });
 

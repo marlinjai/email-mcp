@@ -69,6 +69,7 @@ describe('Smoke test', () => {
       'email_batch_delete',
       'email_batch_move',
       'email_batch_mark',
+      'email_batch_label',
       'email_transfer',
       'email_label',
       'email_folder_create',
@@ -81,16 +82,16 @@ describe('Smoke test', () => {
     }
   });
 
-  it('registers the correct total number of tools (~32)', async () => {
+  it('registers the correct total number of tools (~33)', async () => {
     const { server } = await createServer();
     const tools = (server as any)._registeredTools;
     const toolNames = Object.keys(tools);
 
     // 4 account + 6 reading (5 original + email_save_attachment)
     // + 6 sending (5 original + email_draft_update)
-    // + 11 organizing (7 original + 3 batch + email_transfer)
-    // + 5 moderation (report_spam, batch_report_spam, create/list/delete_block_rule) = 32
-    expect(toolNames.length).toBe(32);
+    // + 12 organizing (7 original + 4 batch [move/delete/mark/label] + email_transfer)
+    // + 5 moderation (report_spam, batch_report_spam, create/list/delete_block_rule) = 33
+    expect(toolNames.length).toBe(33);
   });
 
   it('all registered tool names start with email_ prefix', async () => {
