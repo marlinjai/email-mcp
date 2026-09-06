@@ -11,15 +11,26 @@
   --danger: #c22b2b;
   --shadow: 0 1px 2px rgba(20, 19, 26, .04), 0 18px 40px rgba(20, 19, 26, .07);
   --radius: 14px;
+  /* Brushed gold: a diagonal metal gradient with a faint fine-line grain on top.
+     Darkest stop #c9a04a keeps --gold-ink at 7.6:1 (SC 1.4.3); light mode adds a
+     #8a6314 edge so the button boundary meets 3:1 on white (SC 1.4.11). */
+  --gold-ink: #1a1200;
+  --gold-edge: #8a6314;
+  --gold-grad:
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, .10) 0 1px, rgba(255, 255, 255, 0) 1px 3px),
+    linear-gradient(135deg, #c9a04a 0%, #f1d37a 42%, #d9b552 58%, #c9a04a 100%);
+  /* Headline word: gradient text, so its lightest stop is what has to pass.
+     Light: #b8862e vs #fbfaf9 = 3.1:1, fine for the large heading (SC 1.4.3 large text). */
+  --gold-text-grad: linear-gradient(135deg, #8a6314 0%, #b8862e 50%, #8a6314 100%);
+  --bg-sheen: none;
 }
-/* Gold accent contrast, verified against WCAG SC 1.4.3 (AA, 4.5:1 normal text):
-   light --accent #8a6314 vs white button text 5.42:1; vs page bg #fbfaf9 5.20:1.
-   dark --accent #e0bb54 vs bg #0c0a08 10.73:1; vs button text --accent-ink #1a1200 10.09:1. */
+/* Solid accent fallbacks (SC 1.4.3, 4.5:1 normal text): light --accent #8a6314 vs
+   #fbfaf9 5.20:1; dark --accent #e0bb54 vs #000 12.6:1. */
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0c0a08;
-    --panel: #17140f;
+    --bg: #000000;
+    --panel: #121110;
     --ink: #f3f2f7;
     --muted: #a89f8c;
     --line: rgba(255, 255, 255, 0.11);
@@ -28,13 +39,16 @@
     --ok: #45d69a;
     --danger: #ff7d7d;
     --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .5);
+    --gold-edge: rgba(241, 211, 122, .35);
+    --gold-text-grad: linear-gradient(135deg, #c9a04a 0%, #f1d37a 50%, #e0bb54 100%);
+    --bg-sheen: radial-gradient(1200px 640px at 50% -12%, rgba(224, 187, 84, .12), rgba(224, 187, 84, 0) 62%) no-repeat;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0c0a08;
-  --panel: #17140f;
+  --bg: #000000;
+  --panel: #121110;
   --ink: #f3f2f7;
   --muted: #a89f8c;
   --line: rgba(255, 255, 255, 0.11);
@@ -43,6 +57,9 @@
   --ok: #45d69a;
   --danger: #ff7d7d;
   --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .5);
+  --gold-edge: rgba(241, 211, 122, .35);
+  --gold-text-grad: linear-gradient(135deg, #c9a04a 0%, #f1d37a 50%, #e0bb54 100%);
+  --bg-sheen: radial-gradient(1200px 640px at 50% -12%, rgba(224, 187, 84, .12), rgba(224, 187, 84, 0) 62%) no-repeat;
 }
 
 :root[data-theme="light"] { color-scheme: light; }
@@ -53,7 +70,7 @@ html { background: var(--bg); }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--bg-sheen), var(--bg);
   color: var(--ink);
   font: 400 17px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -92,7 +109,7 @@ section { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
 .nav nav { display: flex; align-items: center; gap: 22px; }
 .nav nav a { color: var(--muted); text-decoration: none; font-size: 14.5px; font-weight: 500; }
 .nav nav a:hover { color: var(--ink); }
-.nav nav a.cta, .nav nav a.cta:hover { color: var(--accent-ink); }
+.nav nav a.cta, .nav nav a.cta:hover { color: var(--gold-ink); }
 .theme-toggle {
   display: grid; place-items: center;
   width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
@@ -120,14 +137,20 @@ section { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
   text-transform: uppercase; letter-spacing: .1em; margin-bottom: 18px;
 }
 h1 { font-size: clamp(36px, 6vw, 60px); font-weight: 700; }
-h1 em { font-style: normal; color: var(--accent); }
+h1 em {
+  font-style: normal; color: var(--accent);
+  background: var(--gold-text-grad);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 .lede { max-width: 640px; margin: 22px auto 0; color: var(--muted); font-size: 18.5px; }
 
 .hero-cta { margin-top: 34px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .cta {
   display: inline-block;
-  background: var(--accent); color: var(--accent-ink);
+  background: var(--gold-grad); color: var(--gold-ink);
   padding: 14px 26px; border-radius: 11px;
+  border: 1px solid var(--gold-edge);
   font-weight: 620; font-size: 16px; text-decoration: none;
   transition: transform 130ms cubic-bezier(.2,.8,.2,1), filter 130ms ease;
 }
@@ -157,7 +180,7 @@ h1 em { font-style: normal; color: var(--accent); }
 .steps li { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .steps .n {
   flex: 0 0 auto; width: 27px; height: 27px; border-radius: 50%;
-  background: var(--accent); color: var(--accent-ink);
+  background: var(--gold-grad); color: var(--gold-ink);
   display: grid; place-items: center; font-size: 13.5px; font-weight: 650;
 }
 .steps strong { display: block; margin-bottom: 3px; }

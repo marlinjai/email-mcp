@@ -2,7 +2,9 @@
 # would keep every returning visitor on a stale build for hours after a deploy
 # (bit us 2026-09-06: 4h-cached style.css hid a redesign). max-age=0 with
 # must-revalidate keeps reloads cheap (304 on a matching ETag) but always fresh.
-/*.css
+# Pages only accepts a splat at the END of a path, so no "/*.css": an invalid
+# rule makes Pages ignore the whole file and serve it as a plain asset.
+/style.css
   Cache-Control: public, max-age=0, must-revalidate
 
 /assets/*
