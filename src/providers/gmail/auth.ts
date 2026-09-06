@@ -49,12 +49,15 @@ export class GmailAuth {
   getAuthUrl(
     redirectUri: string,
     scopeMode?: GmailScopeMode,
-  ): { url: string; codeVerifier: string } {
+  ): { url: string; codeVerifier: string; state: string } {
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto
       .createHash('sha256')
       .update(codeVerifier)
       .digest('base64url');
+    // CSRF binding: the loopback callback must echo this exact value back
+    // (OAuthCallbackServer.waitForCode(state)); a forged redirect cannot know it.
+    const state = crypto.randomBytes(16).toString('base64url');
 
     // Recreate client with the callback redirect URI
     this.oauth2Client = new OAuth2Client(this.clientId, this.clientSecret, redirectUri);
@@ -65,9 +68,10 @@ export class GmailAuth {
       prompt: 'consent',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
+      state,
     });
 
-    return { url, codeVerifier };
+    return { url, codeVerifier, state };
   }
 
   async exchangeCode(code: string, codeVerifier: string): Promise<OAuthTokens> {

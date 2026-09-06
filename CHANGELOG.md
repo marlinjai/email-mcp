@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] - 2026-09-06
+
+### Security
+- **OAuth `state` parameter (CSRF protection) on the Gmail and Outlook authorization flows.** The setup wizard now generates a random `state` per authorization request, sends it in the authorization URL, and the loopback callback server rejects any callback whose `state` does not match (HTTP 400, the code is never exchanged). Previously the flows relied on PKCE alone; PKCE binds the code to the client that started the flow but does not stop a forged redirect to `http://localhost:<port>/callback` from injecting an attacker's authorization code. Also satisfies Google's "Use secure flows" project-checkup requirement (PKCE + `state`). No user-facing change: the wizard behaves exactly as before on the happy path.
+
 ## [1.7.0] - 2026-09-02
 
 ### Added

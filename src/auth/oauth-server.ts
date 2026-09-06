@@ -24,6 +24,7 @@ export class OAuthCallbackServer {
   private rejectCode: ((error: Error) => void) | null = null;
   private timeoutMs: number;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  private expectedState: string | null = null;
 
   constructor(timeoutMs: number = 120_000) {
     this.timeoutMs = timeoutMs;
@@ -37,8 +38,15 @@ export class OAuthCallbackServer {
         if (url.pathname === '/callback' || url.pathname === '/') {
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
+          const state = url.searchParams.get('state');
 
-          if (code) {
+          if (code && this.expectedState !== null && state !== this.expectedState) {
+            // A code that arrives with the wrong (or no) state was not produced
+            // by the authorization request we opened: drop it, never exchange it.
+            res.writeHead(400, { 'Content-Type': 'text/html' });
+            res.end(ERROR_HTML);
+            this.rejectCode?.(new Error('OAuth error: state mismatch, callback did not come from the authorization request we started'));
+          } else if (code) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(SUCCESS_HTML);
             this.resolveCode?.(code);
@@ -66,7 +74,13 @@ export class OAuthCallbackServer {
     });
   }
 
-  waitForCode(): Promise<string> {
+  /**
+   * Resolve with the authorization code once the browser is redirected back.
+   * Pass the `state` that was put into the authorization URL: callbacks whose
+   * state does not match are rejected instead of resolved (CSRF protection).
+   */
+  waitForCode(expectedState?: string): Promise<string> {
+    this.expectedState = expectedState ?? null;
     return new Promise<string>((resolve, reject) => {
       this.resolveCode = (code: string) => {
         if (this.timeoutHandle) clearTimeout(this.timeoutHandle);

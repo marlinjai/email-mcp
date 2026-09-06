@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -69,17 +70,20 @@ export class OutlookAuth {
     this.cryptoProvider = new CryptoProvider();
   }
 
-  async getAuthUrl(redirectUri: string): Promise<{ url: string; codeVerifier: string }> {
+  async getAuthUrl(redirectUri: string): Promise<{ url: string; codeVerifier: string; state: string }> {
     const { verifier, challenge } = await this.cryptoProvider.generatePkceCodes();
+    // CSRF binding, verified by OAuthCallbackServer.waitForCode(state).
+    const state = crypto.randomBytes(16).toString('base64url');
 
     const url = await this.pca.getAuthCodeUrl({
       scopes: OutlookAuth.SCOPES,
       redirectUri,
       codeChallenge: challenge,
       codeChallengeMethod: 'S256',
+      state,
     });
 
-    return { url, codeVerifier: verifier };
+    return { url, codeVerifier: verifier, state };
   }
 
   async exchangeCode(

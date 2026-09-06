@@ -90,7 +90,7 @@ async function setupGmail(scopeModeFlag?: GmailScopeMode): Promise<void> {
   const redirectUri = `http://localhost:${port}/callback`;
 
   const gmailAuth = new GmailAuth(GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, redirectUri);
-  const { url, codeVerifier } = gmailAuth.getAuthUrl(redirectUri, scopeMode);
+  const { url, codeVerifier, state } = gmailAuth.getAuthUrl(redirectUri, scopeMode);
 
   console.log('\nOpening browser for Google authorization...');
   console.log(`If the browser does not open, visit:\n${url}\n`);
@@ -98,7 +98,7 @@ async function setupGmail(scopeModeFlag?: GmailScopeMode): Promise<void> {
 
   let code: string;
   try {
-    code = await server.waitForCode();
+    code = await server.waitForCode(state);
   } catch (err: any) {
     server.shutdown();
     throw new Error(`OAuth flow failed: ${err.message}`);
@@ -144,7 +144,7 @@ async function setupOutlook(): Promise<void> {
   const redirectUri = `http://localhost:${port}`;
 
   const outlookAuth = new OutlookAuth(OUTLOOK_CLIENT_ID);
-  const { url, codeVerifier } = await outlookAuth.getAuthUrl(redirectUri);
+  const { url, codeVerifier, state } = await outlookAuth.getAuthUrl(redirectUri);
 
   console.log('\nOpening browser for Microsoft authorization...');
   console.log(`If the browser does not open, visit:\n${url}\n`);
@@ -152,7 +152,7 @@ async function setupOutlook(): Promise<void> {
 
   let code: string;
   try {
-    code = await server.waitForCode();
+    code = await server.waitForCode(state);
   } catch (err: any) {
     server.shutdown();
     throw new Error(`OAuth flow failed: ${err.message}`);

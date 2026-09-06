@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { GmailAuth } from '../../src/providers/gmail/auth.js';
 
 let lastGeneratedScopes: string[] = [];
+let lastGeneratedState: string | undefined;
 
 // Mock google-auth-library
 vi.mock('google-auth-library', () => {
@@ -17,8 +18,9 @@ vi.mock('google-auth-library', () => {
       this._redirectUri = redirectUri;
     }
 
-    generateAuthUrl(opts: { scope: string[] }) {
+    generateAuthUrl(opts: { scope: string[]; state?: string }) {
       lastGeneratedScopes = opts.scope;
+      lastGeneratedState = opts.state;
       return 'https://accounts.google.com/o/oauth2/v2/auth?mock=true';
     }
 
@@ -64,6 +66,15 @@ describe('GmailAuth', () => {
       expect(url).toContain('https://accounts.google.com');
       expect(typeof codeVerifier).toBe('string');
       expect(codeVerifier.length).toBeGreaterThan(0);
+    });
+
+    it('binds the request to a random state and puts it in the auth URL', () => {
+      const first = auth.getAuthUrl('http://localhost:3000/callback');
+      expect(first.state).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+      expect(lastGeneratedState).toBe(first.state);
+
+      const second = auth.getAuthUrl('http://localhost:3000/callback');
+      expect(second.state).not.toBe(first.state);
     });
 
     it('defaults to the full scope set, including mail.google.com', () => {
@@ -142,6 +153,44 @@ describe('OAuthCallbackServer', () => {
 
     const code = await codePromise;
     expect(code).toBe('test-auth-code');
+
+    server.shutdown();
+  });
+
+  it('resolves when the callback echoes the expected state', async () => {
+    const server = new OAuthCallbackServer();
+    const port = await server.start();
+
+    const codePromise = server.waitForCode('expected-state-123');
+    const response = await fetch(`http://localhost:${port}/callback?code=good-code&state=expected-state-123`);
+    expect(response.ok).toBe(true);
+    expect(await codePromise).toBe('good-code');
+
+    server.shutdown();
+  });
+
+  it('rejects a callback whose state does not match (CSRF)', async () => {
+    const server = new OAuthCallbackServer();
+    const port = await server.start();
+
+    // Attach the rejection handler before the request lands, otherwise Node
+    // reports the (expected) rejection as unhandled.
+    const rejection = expect(server.waitForCode('expected-state-123')).rejects.toThrow(/state mismatch/i);
+    const forged = await fetch(`http://localhost:${port}/callback?code=stolen-code&state=attacker-state`);
+    expect(forged.status).toBe(400);
+    await rejection;
+
+    server.shutdown();
+  });
+
+  it('rejects a callback that omits state when one is expected', async () => {
+    const server = new OAuthCallbackServer();
+    const port = await server.start();
+
+    const rejection = expect(server.waitForCode('expected-state-123')).rejects.toThrow(/state mismatch/i);
+    const missing = await fetch(`http://localhost:${port}/callback?code=stolen-code`);
+    expect(missing.status).toBe(400);
+    await rejection;
 
     server.shutdown();
   });

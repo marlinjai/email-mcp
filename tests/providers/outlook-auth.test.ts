@@ -42,6 +42,7 @@ describe('OutlookAuth', () => {
 
       expect(result.url).toContain('login.microsoftonline.com');
       expect(result.codeVerifier).toBe('test-verifier-12345');
+      expect(result.state).toMatch(/^[A-Za-z0-9_-]{16,}$/);
 
       expect(mockGetAuthCodeUrl).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -49,8 +50,16 @@ describe('OutlookAuth', () => {
           redirectUri: 'http://localhost:3000/callback',
           codeChallenge: 'test-challenge-67890',
           codeChallengeMethod: 'S256',
+          state: result.state,
         })
       );
+    });
+
+    it('uses a fresh state for every authorization request', async () => {
+      mockGetAuthCodeUrl.mockResolvedValue('https://login.microsoftonline.com/x');
+      const a = await auth.getAuthUrl('http://localhost:3000/callback');
+      const b = await auth.getAuthUrl('http://localhost:3000/callback');
+      expect(a.state).not.toBe(b.state);
     });
   });
 
