@@ -8,3 +8,6 @@ credentials.enc
 config/
 
 .infisical.json
+
+# scroll-craft build workspace (brief, fingerprints, lab shots); the shipped page lives in site/demo
+scrollcraft/

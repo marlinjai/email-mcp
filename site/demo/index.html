@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>email-mcp demo: watch an assistant work an inbox</title>
+<meta name="description" content="Open source Model Context Protocol server for Gmail, Outlook, iCloud and IMAP. Runs on your machine, talks straight to your provider's own API.">
+<link rel="canonical" href="https://email.lumitra.co/demo/">
+<meta property="og:title" content="email-mcp demo: watch an assistant work an inbox">
+<meta property="og:description" content="A scroll-driven demo of email-mcp: four accounts connect, one search narrows the inbox, 312 newsletters leave in one call. Sample data, real tool names.">
+<meta property="og:image" content="https://email.lumitra.co/assets/icon-512.png">
+<meta property="og:url" content="https://email.lumitra.co/demo/">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
+<link rel="apple-touch-icon" href="/assets/icon-180.png">
+<style>html { background: #0a0908; }</style>
+<link rel="stylesheet" href="scrollcraft.css">
+<style>
+  /* ---------------------------------------------------------------- brand -- */
+  :root {
+    --sc-canvas:      #0a0908;
+    --sc-surface:     #141210;
+    --sc-ink:         #f3efe6;
+    --sc-ink-soft:    #a89f8c;
+    --sc-accent:      #e0bb54;
+    --sc-accent-ink:  #1a1200;
+    --sc-font-display: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --sc-font-text:    system-ui, -apple-system, "Segoe UI", sans-serif;
+    --sc-font-mono:    ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    --sc-shadow-color: 40 30% 2%;
+    --sc-r-sm: 5px; --sc-r-md: 9px; --sc-r-lg: 14px;
+
+    --side-w: 15rem;
+    --ledger-h: 2.75rem;
+    --top-h: 3.25rem;
+    --raised: #1a1714;
+    --gold-grad: linear-gradient(135deg, #c9a04a 0%, #f1d37a 42%, #d9b552 58%, #c9a04a 100%);
+    --ok: #45d69a;
+  }
+  html { background: var(--sc-canvas); }
+  body { font-size: 0.9375rem; }
+
+  /* ------------------------------------------------------------- chrome -- */
+  .side {
+    position: fixed; left: 0; top: 0; bottom: var(--ledger-h);
+    width: var(--side-w); z-index: var(--sc-z-chrome);
+    display: flex; flex-direction: column;
+    background: var(--sc-surface);
+    border-right: 1px solid var(--sc-hairline);
+    padding: var(--sc-4) var(--sc-3);
+    gap: var(--sc-5);
+  }
+  .brand { display: flex; align-items: center; gap: var(--sc-2); text-decoration: none; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
+  .brand h1 { font-size: 0.95rem; font-weight: 650; letter-spacing: var(--sc-track-snug); margin: 0; }
+  .brand small { display: block; font-size: 0.72rem; color: var(--sc-ink-soft); font-weight: 400; letter-spacing: 0; }
+  .group > .sc-label { display: block; margin-bottom: var(--sc-2); padding-inline: var(--sc-2); }
+  .acct { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: var(--sc-2);
+          padding: var(--sc-1) var(--sc-2); border-radius: var(--sc-r-sm); font-size: 0.82rem; }
+  .acct b { font-weight: 550; }
+  .acct em { font-style: normal; color: var(--sc-ink-soft); font-size: 0.72rem; font-family: var(--sc-font-mono); }
+  .acct i { width: 8px; height: 8px; border-radius: 50%; background: var(--sc-hairline-strong); }
+  .acct.on i { background: var(--ok); }
+  .folders { list-style: none; margin: 0; padding: 0; }
+  .folders a {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--sc-2);
+    padding: 0.38rem var(--sc-2); border-radius: var(--sc-r-sm); text-decoration: none;
+    font-size: 0.88rem; transition: background var(--sc-d-fast) var(--sc-ease-out);
+  }
+  .folders a:hover { background: color-mix(in oklab, var(--sc-ink) 6%, transparent); }
+  .folders a[aria-current="true"] { background: color-mix(in oklab, var(--sc-accent) 14%, transparent); color: var(--sc-ink); }
+  .folders a[aria-current="true"] span:first-child::before { content: ""; display: inline-block; width: 3px; height: 0.9em;
+    background: var(--gold-grad); margin-right: 0.55rem; vertical-align: -0.1em; border-radius: 2px; }
+  .folders .n { font-family: var(--sc-font-mono); font-size: 0.72rem; color: var(--sc-ink-soft); font-variant-numeric: tabular-nums; }
+  .side-foot { margin-top: auto; font-size: 0.74rem; color: var(--sc-ink-soft); display: flex; flex-wrap: wrap; gap: var(--sc-2) var(--sc-3); padding-inline: var(--sc-2); }
+  .side-foot a { color: inherit; }
+
+  /* the ledger: the signature move. Fixed status bar that accumulates calls. */
+  .ledger {
+    position: fixed; left: 0; right: 0; bottom: 0; height: var(--ledger-h);
+    z-index: calc(var(--sc-z-chrome) + 1);
+    background: var(--sc-surface); border-top: 1px solid var(--sc-hairline);
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--sc-3);
+    padding-inline: var(--sc-3);
+    font-family: var(--sc-font-mono); font-size: 0.74rem;
+  }
+  .ledger__count { background: none; border: 1px solid var(--sc-hairline-strong); color: var(--sc-ink);
+    border-radius: var(--sc-r-sm); padding: 0.22rem 0.55rem; cursor: pointer; font: inherit;
+    transition: background var(--sc-d-fast) var(--sc-ease-out), transform 120ms var(--sc-ease-out); }
+  .ledger__count:hover { background: color-mix(in oklab, var(--sc-ink) 8%, transparent); }
+  .ledger__count:active { transform: scale(0.97); }
+  .ledger__last { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--sc-ink-soft); }
+  .ledger__last b { color: var(--sc-accent); font-weight: 500; }
+  .ledger__hint { color: var(--sc-ink-soft); }
+  .ledger__panel {
+    position: fixed; left: 0; right: 0; bottom: var(--ledger-h); max-height: 46vh; overflow: auto;
+    z-index: var(--sc-z-chrome); background: var(--raised); border-top: 1px solid var(--sc-hairline);
+    box-shadow: var(--sc-e3); padding: var(--sc-3) var(--sc-4);
+    font-family: var(--sc-font-mono); font-size: 0.76rem;
+    transform: translateY(8px); opacity: 0; pointer-events: none;
+    transition: opacity 180ms var(--sc-ease-out), transform 180ms var(--sc-ease-out);
+  }
+  .ledger__panel.open { transform: none; opacity: 1; pointer-events: auto; }
+  .ledger__panel ol { list-style: none; margin: 0; padding: 0; }
+  .ledger__panel li { display: grid; grid-template-columns: 2.2rem 1fr; gap: var(--sc-3); padding: 0.3rem 0;
+    border-bottom: 1px solid var(--sc-hairline); }
+  .ledger__panel li:last-child { border-bottom: 0; }
+  .ledger__panel li span:first-child { color: var(--sc-ink-soft); }
+  .ledger__panel b { color: var(--sc-accent); font-weight: 500; }
+  .ledger__panel .empty { color: var(--sc-ink-soft); }
+
+  /* ------------------------------------------------------------ surface -- */
+  main { margin-left: var(--side-w); }
+  .stage-in {
+    position: absolute; inset: 0; bottom: var(--ledger-h);
+    display: grid; grid-template-columns: 22rem 1fr;
+    gap: 0; overflow: hidden;
+  }
+  .convo {
+    border-right: 1px solid var(--sc-hairline);
+    padding: var(--sc-6) var(--sc-5);
+    display: flex; flex-direction: column; gap: var(--sc-4);
+    overflow: hidden;
+  }
+  .turn { max-width: 34ch; text-wrap: pretty; }
+  .turns { display: grid; }
+  .turns > * { grid-area: 1 / 1; }
+  .turn .who { display: block; font-family: var(--sc-font-mono); font-size: 0.7rem; letter-spacing: var(--sc-track-wide);
+    text-transform: uppercase; color: var(--sc-ink-soft); margin-bottom: var(--sc-1); }
+  .turn.user p { font-size: 1.02rem; line-height: 1.45; color: var(--sc-ink); margin: 0; }
+  .turn.ai p { font-size: 0.9rem; line-height: 1.55; color: var(--sc-ink-soft); margin: 0; }
+  .turn.ai p b { color: var(--sc-ink); font-weight: 550; font-variant-numeric: tabular-nums; }
+  .turn .call { display: inline-block; margin-top: var(--sc-2); font-family: var(--sc-font-mono); font-size: 0.72rem;
+    color: var(--sc-accent); border: 1px solid color-mix(in oklab, var(--sc-accent) 40%, transparent);
+    border-radius: var(--sc-r-sm); padding: 0.15rem 0.45rem; }
+  .convo .help { margin-top: auto; font-size: 0.8rem; color: var(--sc-ink-soft); max-width: 34ch; }
+  .convo .help a { color: var(--sc-ink); }
+
+  .inbox { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .inbox__bar {
+    display: flex; align-items: baseline; justify-content: space-between; gap: var(--sc-3);
+    padding: var(--sc-4) var(--sc-5) var(--sc-3); border-bottom: 1px solid var(--sc-hairline);
+  }
+  .inbox__bar h2 { font-size: 0.95rem; font-weight: 600; margin: 0; letter-spacing: var(--sc-track-snug); }
+  .inbox__bar h2 small { color: var(--sc-ink-soft); font-weight: 400; margin-left: var(--sc-2); }
+  .inbox__meta { font-family: var(--sc-font-mono); font-size: 0.74rem; color: var(--sc-ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .inbox__meta b { color: var(--sc-ink); font-weight: 500; }
+  .rows { list-style: none; margin: 0; padding: 0; overflow: hidden; flex: 1; }
+  .row {
+    display: grid; grid-template-columns: 1.4rem 5.2rem 1fr auto; align-items: center; gap: var(--sc-3);
+    padding: 0.42rem var(--sc-5); border-bottom: 1px solid var(--sc-hairline);
+    font-size: 0.85rem; white-space: nowrap; min-width: 0;
+    transition: opacity 260ms var(--sc-ease-out), transform 260ms var(--sc-ease-out), background 120ms var(--sc-ease-out);
+  }
+  .row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .row .acc { font-family: var(--sc-font-mono); font-size: 0.68rem; color: var(--sc-ink-soft); text-transform: uppercase; letter-spacing: var(--sc-track-wide); }
+  .row .sub b { font-weight: 560; }
+  .row .sub span { color: var(--sc-ink-soft); }
+  .row.unread .sub b { color: var(--sc-ink); }
+  .row:not(.unread) .sub b { font-weight: 450; color: var(--sc-ink-soft); }
+  .row .ago { font-family: var(--sc-font-mono); font-size: 0.7rem; color: var(--sc-ink-soft); }
+  .row .box { width: 0.9rem; height: 0.9rem; border: 1px solid var(--sc-hairline-strong); border-radius: 3px; display: grid; place-items: center; }
+  .row.checked .box { background: var(--gold-grad); border-color: transparent; }
+  .row.checked .box::after { content: ""; width: 0.3rem; height: 0.5rem; border: solid var(--sc-accent-ink); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+  .row.checked { background: color-mix(in oklab, var(--sc-accent) 7%, transparent); }
+  .row.off { display: none; }
+  .row.gone { opacity: 0; transform: translateX(1.5rem); transition-duration: 180ms; }
+  .row.collapsed { display: none; }
+  .rows[data-arriving] .row.on:not(.seen) { animation: rowin 320ms var(--sc-ease-out) both; }
+  @keyframes rowin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .inbox__foot { padding: var(--sc-2) var(--sc-5); font-family: var(--sc-font-mono); font-size: 0.7rem; color: var(--sc-ink-soft);
+    border-top: 1px solid var(--sc-hairline); display: flex; justify-content: space-between; gap: var(--sc-3); }
+  .rules { padding: var(--sc-3) var(--sc-5); border-top: 1px solid var(--sc-hairline); font-size: 0.8rem; }
+  .rules .sc-label { display: block; margin-bottom: var(--sc-2); }
+  .rules ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+  .rules li { display: none; grid-template-columns: 1fr auto; gap: var(--sc-3); font-family: var(--sc-font-mono); font-size: 0.74rem; }
+  .rules li.on { display: grid; animation: rowin 220ms var(--sc-ease-out) both; }
+  .rules li span:last-child { color: var(--sc-ink-soft); }
+  .rules .none { color: var(--sc-ink-soft); font-family: var(--sc-font-mono); font-size: 0.74rem; }
+
+  /* act 2: flow */
+  .search { padding: var(--sc-7) var(--sc-6) 28vh; display: grid; grid-template-columns: 22rem 1fr; gap: var(--sc-6); }
+  .search .convo { border: 0; padding: 0; }
+  .results { border: 1px solid var(--sc-hairline); border-radius: var(--sc-r-md); background: var(--sc-surface); box-shadow: var(--sc-e2), var(--sc-edge); overflow: hidden; align-self: start; }
+  .results .row { padding-inline: var(--sc-4); }
+  .results .row:last-child { border-bottom: 0; }
+  .results .inbox__bar { padding-inline: var(--sc-4); }
+  .results .inbox__foot { padding-inline: var(--sc-4); }
+
+  /* act 4: pan */
+  .tools-stage { position: absolute; inset: 0; bottom: var(--ledger-h); display: flex; align-items: center; overflow: hidden; }
+  .rail { display: flex; gap: var(--sc-4); padding-inline: var(--sc-6); align-items: stretch; }
+  .rail > * { flex: 0 0 auto; width: 20rem; }
+  .rail__lead { width: 22rem; display: flex; flex-direction: column; justify-content: center; gap: var(--sc-3); padding-right: var(--sc-4); }
+  .rail__lead h2 { font-size: var(--sc-t-xl); font-weight: 560; letter-spacing: var(--sc-track-snug); line-height: 1.1; margin: 0; text-wrap: balance; }
+  .rail__lead p { color: var(--sc-ink-soft); margin: 0; max-width: 34ch; text-wrap: pretty; }
+  .cat { border: 1px solid var(--sc-hairline); border-radius: var(--sc-r-md); background: var(--sc-surface);
+    box-shadow: var(--sc-e1), var(--sc-edge); padding: var(--sc-4) var(--sc-4) var(--sc-3); display: flex; flex-direction: column; gap: var(--sc-3); }
+  .cat h3 { font-size: 0.92rem; font-weight: 600; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+  .cat h3 .n { font-family: var(--sc-font-mono); font-size: 0.72rem; color: var(--sc-ink-soft); font-weight: 400; }
+  .cat p { font-size: 0.8rem; color: var(--sc-ink-soft); margin: 0; text-wrap: pretty; }
+  .cat ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; font-family: var(--sc-font-mono); font-size: 0.72rem; }
+  .cat li { padding: 0.18rem 0.4rem; border-radius: 4px; background: color-mix(in oklab, var(--sc-ink) 4%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cat.note { background: var(--raised); }
+  .cat.note dl { margin: 0; display: grid; gap: var(--sc-2); font-size: 0.8rem; }
+  .cat.note dt { font-family: var(--sc-font-mono); font-size: 0.7rem; letter-spacing: var(--sc-track-wide); text-transform: uppercase; color: var(--sc-ink-soft); }
+  .cat.note dd { margin: 0; color: var(--sc-ink); }
+  .cat.note code { font-family: var(--sc-font-mono); font-size: 0.72rem; background: color-mix(in oklab, var(--sc-ink) 8%, transparent); padding: 0.05rem 0.3rem; border-radius: 3px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .rail > * { opacity: calc(0.55 + 0.45 * clamp(0, (var(--sc-p, 0) * 9 - var(--i, 0) + 1), 1)); }
+    .rail > :first-child { opacity: 1; }
+  }
+
+  /* act 5: close */
+  .close-in { position: absolute; inset: 0; bottom: var(--ledger-h); display: grid; grid-template-rows: 1fr auto; overflow: hidden; }
+  .setup { display: grid; grid-template-columns: 22rem 1fr; }
+  .setup .convo { padding-top: var(--sc-6); }
+  .panel { padding: var(--sc-6) var(--sc-6); display: flex; flex-direction: column; gap: var(--sc-4); min-width: 0; }
+  .field { display: grid; gap: var(--sc-2); }
+  .field label { font-family: var(--sc-font-mono); font-size: 0.7rem; letter-spacing: var(--sc-track-wide); text-transform: uppercase; color: var(--sc-ink-soft); }
+  .cmd { display: grid; grid-template-columns: 1fr auto; gap: var(--sc-2); }
+  .cmd input, .cfg pre {
+    font-family: var(--sc-font-mono); font-size: 0.8rem; color: var(--sc-ink);
+    background: var(--raised); border: 1px solid var(--sc-hairline-strong); border-radius: var(--sc-r-md);
+    padding: 0.65rem 0.8rem; width: 100%; margin: 0; box-shadow: var(--sc-edge);
+  }
+  .cmd input { min-width: 0; }
+  .cfg pre { white-space: pre; overflow-x: auto; line-height: 1.5; }
+  .btn {
+    font: inherit; font-weight: 600; font-size: 0.85rem; color: var(--sc-accent-ink);
+    background: var(--gold-grad); border: 0; border-radius: var(--sc-r-md); padding: 0.6rem 0.95rem;
+    cursor: pointer; white-space: nowrap; box-shadow: var(--sc-e1);
+    transition: filter 120ms var(--sc-ease-out), transform 120ms var(--sc-ease-out);
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:active { transform: scale(0.97); }
+  .btn--ghost { background: none; color: var(--sc-ink); border: 1px solid var(--sc-hairline-strong); box-shadow: none; }
+  .btn--ghost:hover { background: color-mix(in oklab, var(--sc-ink) 7%, transparent); filter: none; }
+  select.client { font: inherit; font-size: 0.88rem; color: var(--sc-ink); background: var(--raised);
+    border: 1px solid var(--sc-hairline-strong); border-radius: var(--sc-r-md); padding: 0.55rem 0.7rem; width: max-content; min-width: 16rem; }
+  .cfg { display: grid; gap: var(--sc-2); }
+  .cfg .head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sc-3); }
+  .cfg .head span { font-family: var(--sc-font-mono); font-size: 0.72rem; color: var(--sc-ink-soft); }
+  .copied { font-family: var(--sc-font-mono); font-size: 0.72rem; color: var(--ok); min-height: 1.1em; }
+  .foot { border-top: 1px solid var(--sc-hairline); padding: var(--sc-3) var(--sc-6); font-size: 0.74rem; color: var(--sc-ink-soft);
+    display: flex; flex-wrap: wrap; gap: var(--sc-2) var(--sc-5); align-items: baseline; }
+  .foot a { color: inherit; }
+  .foot p { margin: 0; max-width: 70ch; }
+
+  /* grounds painted per act, not drifted: a tool cuts, it does not dissolve */
+  [data-sc-act] { background: var(--sc-canvas); }
+  #search { background: #0d0b09; }
+
+  /* ------------------------------------------------------------- mobile -- */
+  @media (max-width: 860px) {
+    :root { --side-w: 0px; }
+    .side {
+      top: 0; bottom: auto; right: 0; width: auto; height: var(--top-h);
+      flex-direction: row; align-items: center; gap: var(--sc-3);
+      padding: 0 var(--sc-3); border-right: 0; border-bottom: 1px solid var(--sc-hairline);
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .side .group--accounts, .side-foot, .side .group > .sc-label { display: none; }
+    .brand h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    .brand { flex: 0 0 auto; }
+    .brand small { display: none; }
+    .folders { display: flex; gap: var(--sc-1); }
+    .folders a { padding: 0.3rem 0.55rem; font-size: 0.8rem; white-space: nowrap; }
+    .folders .n { display: none; }
+    .folders a[aria-current="true"] span:first-child::before { display: none; }
+    main { margin-left: 0; }
+    .stage-in { top: var(--top-h); grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .convo { border-right: 0; border-bottom: 1px solid var(--sc-hairline); padding: var(--sc-4); gap: var(--sc-3); }
+    .convo .help { display: none; }
+    .turn.user p { font-size: 0.95rem; }
+    .turn.ai p { font-size: 0.84rem; }
+    .row { grid-template-columns: 1.2rem 1fr auto; padding-inline: var(--sc-4); }
+    .row .acc { display: none; }
+    .inbox__bar, .inbox__foot, .rules { padding-inline: var(--sc-4); }
+    .inbox__bar { flex-wrap: wrap; }
+    .search { grid-template-columns: 1fr; padding: calc(var(--top-h) + var(--sc-6)) var(--sc-4) 22vh; gap: var(--sc-5); }
+    .tools-stage { top: var(--top-h); }
+    .rail { padding-inline: var(--sc-4); }
+    .rail > * { width: 17rem; }
+    .rail__lead { width: 18rem; }
+    .close-in { top: var(--top-h); }
+    .setup { grid-template-columns: 1fr; }
+    .setup .convo { padding: var(--sc-4); }
+    .panel { padding: var(--sc-4); gap: var(--sc-3); }
+    .cfg pre { font-size: 0.72rem; }
+    .foot { padding: var(--sc-3) var(--sc-4); }
+    .ledger__hint { display: none; }
+  }
+  @media (max-height: 700px) and (max-width: 860px) {
+    .convo .turn.ai { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row, .ledger__panel { transition: none; }
+    .rules li.on { animation: none; }
+    .rows[data-arriving] .row.on:not(.seen) { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<span data-sc-progress></span>
+<div class="sc-grain" aria-hidden="true"></div>
+
+<aside class="side" aria-label="Mailbox">
+  <a class="brand" href="#inbox">
+    <img src="/assets/icon-32.png" width="26" height="26" alt="">
+    <h1>email-mcp <small>Model Context Protocol server</small></h1>
+  </a>
+  <div class="group group--accounts">
+    <span class="sc-label">Accounts</span>
+    <div id="accts"></div>
+  </div>
+  <nav class="group" aria-label="Sections">
+    <span class="sc-label">Folders</span>
+    <ul class="folders" id="folders">
+      <li><a href="#inbox" data-for="inbox"><span>Inbox</span><span class="n" id="n-inbox">0</span></a></li>
+      <li><a href="#search" data-for="search"><span>Needs reply</span><span class="n" id="n-search">0</span></a></li>
+      <li><a href="#cleanup" data-for="cleanup"><span>Archive</span><span class="n" id="n-archive">0</span></a></li>
+      <li><a href="#tools" data-for="tools"><span>Tools</span><span class="n">32</span></a></li>
+      <li><a href="#setup" data-for="setup"><span>Setup</span><span class="n">npx</span></a></li>
+    </ul>
+  </nav>
+  <div class="side-foot">
+    <a href="/">Home</a>
+    <a href="https://github.com/marlinjai/email-mcp">GitHub</a>
+    <a href="https://www.npmjs.com/package/@marlinjai/email-mcp">npm</a>
+    <a href="/privacy.html">Privacy</a>
+  </div>
+</aside>
+
+<main id="top">
+
+  <!-- 1 · RECOGNITION: pin. The surface is already in a state: one account
+       connected and its mail present at p = 0, the other three connect as the
+       reader scrolls. -->
+  <section id="inbox" data-sc-act="pin" data-sc-span="2.2" data-sc-drift="#0a0908">
+    <div data-sc-stage>
+      <div class="stage-in" data-sc-verify-state="">
+        <div class="convo">
+          <div class="turn user" data-sc-cue="0 0.62 0">
+            <span class="who">You</span>
+            <p>What needs me today? Across all four accounts.</p>
+          </div>
+          <div class="turn ai" data-sc-cue="0.72 1">
+            <span class="who">Assistant</span>
+            <p><span id="a1-lead">Connecting</span> <b id="a1-total">0</b> messages across <b id="a1-acc">1</b> account<span id="a1-pl"></span>, <b id="a1-unread">0</b> unread. Sample inbox: nothing here is real mail.</p>
+            <span class="call">email_list_accounts</span>
+          </div>
+          <p class="help">One server for Gmail, Outlook, iCloud and generic IMAP. It runs on your machine and talks to your provider's own API. No server of ours ever sees your inbox. <a href="https://github.com/marlinjai/email-mcp#readme">Read how</a>.</p>
+        </div>
+        <div class="inbox">
+          <div class="inbox__bar">
+            <h2>Inbox <small>all accounts</small></h2>
+            <div class="inbox__meta"><b id="m1-total">0</b> messages · <b id="m1-unread">0</b> unread</div>
+          </div>
+          <ul class="rows" id="rows1" inert data-arriving></ul>
+          <div class="inbox__foot"><span>Sample data, generated for this page</span><span id="f1">1 of 4 accounts connected</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · RELIEF: flow + reveal. One search call, and 1,248 becomes 7. The
+       padding below the result is authored silence before the peak. -->
+  <section id="search" data-sc-act="flow">
+    <div class="search">
+      <div class="convo sc-stack" data-sc-in data-sc-stagger="80">
+        <div class="turn user">
+          <span class="who">You</span>
+          <p>Which of these actually need a reply from me?</p>
+        </div>
+        <div class="turn ai">
+          <span class="who">Assistant</span>
+          <p>Searched all four accounts in compact mode, so the results stay small until you ask for a body. <b id="a2-n">0</b> of <b id="a2-total">0</b> need you.</p>
+          <span class="call">email_search · returnBody: false</span>
+        </div>
+      </div>
+      <div class="results" data-sc-reveal="up" data-sc-reveal-at="0.12 0.5">
+        <div class="inbox__bar">
+          <h2>Needs reply <small>4 accounts</small></h2>
+          <div class="inbox__meta"><b id="m2-n">0</b> of <b id="m2-total">0</b></div>
+        </div>
+        <ul class="rows" id="rows2" inert></ul>
+        <div class="inbox__foot"><span>Compact results: headers only, bodies on request</span><span>7 rows</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · CONTROL, the peak: pin. Largest span on the page. Selection grows,
+       then every selected row leaves the inbox in one call, then three
+       standing rules land. -->
+  <section id="cleanup" data-sc-act="pin" data-sc-span="3.6" data-sc-drift="#0a0908">
+    <div data-sc-stage>
+      <div class="stage-in" data-sc-verify-state="">
+        <div class="convo">
+          <div class="turn user" data-sc-cue="0 1 0 0">
+            <span class="who">You</span>
+            <p>Archive every newsletter older than a week, and block the three senders I never open.</p>
+          </div>
+          <div class="turns">
+          <div class="turn ai" data-sc-cue="0.1 0.58 0.05 0.05">
+            <span class="who">Assistant</span>
+            <p>Selecting. <b id="a3-sel">0</b> of <b id="a3-total">0</b> match.</p>
+            <span class="call">email_search · category: newsletters</span>
+          </div>
+          <div class="turn ai" data-sc-cue="0.56 0.82 0.05 0.05">
+            <span class="who">Assistant</span>
+            <p>Moved <b id="a3-moved">0</b> messages to Archive in one call. Inbox is at <b id="a3-left">0</b>.</p>
+            <span class="call">email_batch_move · 1 call</span>
+          </div>
+          <div class="turn ai" data-sc-cue="0.8 1 0.05 0.04">
+            <span class="who">Assistant</span>
+            <p>Three standing rules created. Mail from those senders never reaches the inbox again, and each rule can be listed or deleted later.</p>
+            <span class="call">email_create_block_rule · 3 calls</span>
+          </div>
+          </div>
+          <p class="help">Batch tools take hundreds of ids per call. Gmail up to 1,000, Outlook in batches of 20, IMAP by UID range.</p>
+        </div>
+        <div class="inbox">
+          <div class="inbox__bar">
+            <h2>Inbox <small>all accounts</small></h2>
+            <div class="inbox__meta"><b id="m3-sel">0</b> selected · <b id="m3-total">0</b> messages</div>
+          </div>
+          <ul class="rows" id="rows3" inert></ul>
+          <div class="rules">
+            <span class="sc-label">Standing block rules</span>
+            <ul id="rules3"></ul>
+            <span class="none" id="rules3-none">none yet</span>
+          </div>
+          <div class="inbox__foot"><span>Sample data, generated for this page</span><span id="f3">Archive: 0</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · TRUST: pan. The real tool palette travels sideways. -->
+  <section id="tools" data-sc-act="pan" data-sc-span="2.6" data-sc-drift="#0a0908">
+    <div data-sc-stage>
+      <div class="tools-stage">
+        <div class="rail" data-sc-pan="0.05" id="rail">
+          <div class="rail__lead" style="--i:0">
+            <h2>32 tools. Six categories. Every name real.</h2>
+            <p>The full list with exact parameters is in the README. This is the surface an assistant sees when it connects.</p>
+          </div>
+          <article class="cat" style="--i:1">
+            <h3>Accounts <span class="n">4</span></h3>
+            <p>Add, list, test and remove connected mailboxes.</p>
+            <ul><li>email_list_accounts</li><li>email_add_account</li><li>email_remove_account</li><li>email_test_account</li></ul>
+          </article>
+          <article class="cat" style="--i:2">
+            <h3>Reading and search <span class="n">6</span></h3>
+            <p>Compact by default, full body on request. Attachments to disk without the base64 round trip.</p>
+            <ul><li>email_list_folders</li><li>email_search</li><li>email_get</li><li>email_get_thread</li><li>email_get_attachment</li><li>email_save_attachment</li></ul>
+          </article>
+          <article class="cat" style="--i:3">
+            <h3>Sending and drafts <span class="n">6</span></h3>
+            <p>Send, reply, forward. Drafts you can create, update in place and list.</p>
+            <ul><li>email_send</li><li>email_reply</li><li>email_forward</li><li>email_draft_create</li><li>email_draft_update</li><li>email_draft_list</li></ul>
+          </article>
+          <article class="cat" style="--i:4">
+            <h3>Organization <span class="n">8</span></h3>
+            <p>Move, transfer between accounts, delete, mark, label, folders and categories.</p>
+            <ul><li>email_move</li><li>email_transfer</li><li>email_delete</li><li>email_mark</li><li>email_label</li><li>email_folder_create</li><li>email_get_labels</li><li>email_get_categories</li></ul>
+          </article>
+          <article class="cat" style="--i:5">
+            <h3>Batch operations <span class="n">3</span></h3>
+            <p>The same actions across hundreds of messages in a single call.</p>
+            <ul><li>email_batch_delete</li><li>email_batch_move</li><li>email_batch_mark</li></ul>
+          </article>
+          <article class="cat" style="--i:6">
+            <h3>Spam moderation <span class="n">5</span></h3>
+            <p>Train the provider's own filter, and keep standing block rules per provider.</p>
+            <ul><li>email_report_spam</li><li>email_batch_report_spam</li><li>email_create_block_rule</li><li>email_list_block_rules</li><li>email_delete_block_rule</li></ul>
+          </article>
+          <article class="cat note" style="--i:7">
+            <h3>Worth knowing</h3>
+            <dl>
+              <dt>Credentials</dt>
+              <dd>Stored in <code>~/.email-mcp</code> on your machine, AES-256-GCM encrypted with a key derived from the machine.</dd>
+              <dt>OAuth</dt>
+              <dd>Gmail and Outlook use a shared app by default. Set <code>EMAIL_MCP_GMAIL_CLIENT_ID</code> to bring your own.</dd>
+              <dt>Gmail scope</dt>
+              <dd>The default permits permanent deletion. Choose <code>restricted</code> during setup to drop it.</dd>
+            </dl>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · READINESS: pin, the close. An actual input is the ending. -->
+  <section id="setup" data-sc-act="pin" data-sc-span="1.3" data-sc-drift="#0a0908">
+    <div data-sc-stage>
+      <div class="close-in" data-sc-verify-state="">
+        <div class="setup">
+          <div class="convo">
+            <div class="turn ai" data-sc-cue="0.04">
+              <span class="who">Assistant</span>
+              <p>Ready when you are. One command adds your accounts in the terminal, then point your client at the server and the tools show up.</p>
+            </div>
+            <p class="help">No account with us, no dashboard, no lock-in. Uninstall by removing the npm package; your accounts and tokens stay in <code>~/.email-mcp</code>.</p>
+          </div>
+          <div class="panel">
+            <div class="field">
+              <label for="cmd">1 · Run the setup wizard</label>
+              <div class="cmd">
+                <input id="cmd" readonly value="npx -y -p @marlinjai/email-mcp@latest email-mcp-setup" aria-label="Setup command">
+                <button class="btn" type="button" data-copy="#cmd">Copy</button>
+              </div>
+              <div class="copied" id="copied-cmd" aria-live="polite"></div>
+            </div>
+            <div class="field">
+              <label for="client">2 · Point your client at it</label>
+              <select class="client" id="client">
+                <option value="desktop">Claude Desktop</option>
+                <option value="code">Claude Code</option>
+                <option value="cursor">Cursor</option>
+                <option value="generic">Another MCP client</option>
+              </select>
+            </div>
+            <div class="cfg">
+              <div class="head"><span id="cfg-file">claude_desktop_config.json</span><button class="btn btn--ghost" type="button" data-copy="#cfg">Copy</button></div>
+              <pre id="cfg"></pre>
+              <div class="copied" id="copied-cfg" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+        <footer class="foot">
+          <a href="/">Home</a>
+          <a href="https://github.com/marlinjai/email-mcp">GitHub</a>
+          <a href="https://github.com/marlinjai/email-mcp/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="/privacy.html">Privacy</a>
+          <a href="/terms.html">Terms</a>
+          <a href="/impressum.html">Impressum</a>
+          <p>email-mcp is an independent, open source project, MIT licensed, and is not affiliated with or endorsed by Google, Microsoft or Apple.</p>
+        </footer>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="ledger__panel" id="ledger-panel" role="region" aria-label="Tool call transcript">
+  <ol id="ledger-list"><li class="empty">No calls yet. Scroll: every call the assistant makes lands here.</li></ol>
+</div>
+<div class="ledger" role="status" aria-label="Tool calls">
+  <button class="ledger__count" id="ledger-btn" type="button" aria-expanded="false" aria-controls="ledger-panel">0 calls</button>
+  <div class="ledger__last" id="ledger-last">Scroll: every tool call the assistant makes lands here.</div>
+  <div class="ledger__hint" id="ledger-state" data-sc-verify-state="">idle</div>
+</div>
+
+<script src="scrollcraft.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------- sample data --
+     Every number on the surface is computed from these arrays. Addresses use
+     reserved example domains. Nothing here is real mail. */
+  var ACCOUNTS = [
+    { id: 'gmail',   label: 'Gmail',   addr: 'm@example.com',   kind: 'REST API',        total: 612, unread: 203, newsletters: 171, at: 0.00 },
+    { id: 'outlook', label: 'Outlook', addr: 'm@example.org',   kind: 'Microsoft Graph', total: 351, unread: 118, newsletters: 88,  at: 0.18 },
+    { id: 'icloud',  label: 'iCloud',  addr: 'm@example.net',   kind: 'IMAP/SMTP',       total: 189, unread: 61,  newsletters: 41,  at: 0.42 },
+    { id: 'imap',    label: 'IMAP',    addr: 'ops@mail.example', kind: 'IMAP/SMTP',      total: 96,  unread: 25,  newsletters: 12,  at: 0.66 }
+  ];
+  var BLOCK = ['digest@news.example.com', 'hello@offers.example.org', 'weekly@updates.example.net'];
+  // kind: reply (needs a reply from you), news (newsletter), notice, receipt
+  var MSGS = [
+    ['gmail',   'digest@news.example.com',     'Your Monday digest: 14 stories',            'news',    '2h',  1],
+    ['gmail',   'lena@example.com',            'Re: contract draft, two comments',          'reply',   '3h',  1],
+    ['gmail',   'billing@cloud.example.com',   'Receipt for September',                     'receipt', '5h',  0],
+    ['gmail',   'hello@offers.example.org',    'Last day: 30% on everything',               'news',    '6h',  1],
+    ['gmail',   'jonas@example.com',           'Can you review the deck before Thursday?',  'reply',   '7h',  1],
+    ['gmail',   'noreply@calendar.example.com','Reminder: dentist, 09:30',                  'notice',  '9h',  0],
+    ['gmail',   'digest@news.example.com',     'Your weekend digest: 11 stories',           'news',    '2d',  0],
+    ['gmail',   'weekly@updates.example.net',  'What changed this week',                    'news',    '3d',  0],
+    ['outlook', 'procurement@example.org',     'PO 4471 needs your approval',               'reply',   '1h',  1],
+    ['outlook', 'hello@offers.example.org',    'New arrivals you might like',               'news',    '4h',  1],
+    ['outlook', 'it@example.org',              'Password expires in 5 days',                'notice',  '8h',  0],
+    ['outlook', 'sara@example.org',            'Re: Q4 planning, are you free Tuesday?',    'reply',   '1d',  1],
+    ['outlook', 'weekly@updates.example.net',  'Release notes 4.2',                         'news',    '2d',  0],
+    ['outlook', 'digest@news.example.com',     'Your Thursday digest: 9 stories',           'news',    '4d',  0],
+    ['icloud',  'mum@example.net',             'Photos from Sunday',                        'notice',  '2h',  1],
+    ['icloud',  'weekly@updates.example.net',  'Your week in review',                       'news',    '1d',  0],
+    ['icloud',  'school@example.net',          'Parent evening: please confirm a slot',     'reply',   '1d',  1],
+    ['icloud',  'hello@offers.example.org',    'Members only: early access',                'news',    '3d',  0],
+    ['icloud',  'digest@news.example.com',     'Your Tuesday digest: 12 stories',           'news',    '6d',  0],
+    ['imap',    'monitor@mail.example',        'Disk 82% on srv-02',                        'notice',  '40m', 1],
+    ['imap',    'client@mail.example',         'Re: invoice 2026-031, can we split it?',    'reply',   '3h',  1],
+    ['imap',    'weekly@updates.example.net',  'Changelog, week 36',                        'news',    '5d',  0],
+    ['imap',    'digest@news.example.com',     'Your Friday digest: 10 stories',            'news',    '9d',  0],
+    ['gmail',   'anna@example.com',            'Re: keys for the flat, when suits?',        'reply',   '2d',  1],
+    ['outlook', 'hello@offers.example.org',    'Your cart is waiting',                      'news',    '8d',  0],
+    ['gmail',   'digest@news.example.com',     'Your Wednesday digest: 8 stories',          'news',    '12d', 0]
+  ];
+  var CLIENTS = {
+    desktop: { file: 'claude_desktop_config.json', text: '{\n  "mcpServers": {\n    "email": {\n      "command": "npx",\n      "args": ["-y", "@marlinjai/email-mcp"]\n    }\n  }\n}' },
+    code:    { file: 'terminal', text: 'claude mcp add email -- npx -y @marlinjai/email-mcp' },
+    cursor:  { file: '.cursor/mcp.json', text: '{\n  "mcpServers": {\n    "email": {\n      "command": "npx",\n      "args": ["-y", "@marlinjai/email-mcp"]\n    }\n  }\n}' },
+    generic: { file: 'your client’s MCP config', text: '{\n  "email": {\n    "command": "npx",\n    "args": ["@marlinjai/email-mcp"]\n  }\n}' }
+  };
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
+  var clamp01 = function (v) { return v < 0 ? 0 : v > 1 ? 1 : v; };
+  var sum = function (arr, k) { return arr.reduce(function (a, b) { return a + b[k]; }, 0); };
+  var TOTAL = sum(ACCOUNTS, 'total'), UNREAD = sum(ACCOUNTS, 'unread'), NEWS = sum(ACCOUNTS, 'newsletters');
+  var acct = {}; ACCOUNTS.forEach(function (a) { acct[a.id] = a; });
+  var NEED = MSGS.filter(function (m) { return m[3] === 'reply'; });
+
+  /* ------------------------------------------------------------- render -- */
+  function rowHTML(m, box) {
+    return '<li class="row' + (m[5] ? ' unread' : '') + '" data-acct="' + m[0] + '" data-kind="' + m[3] + '">' +
+      (box ? '<span class="box" aria-hidden="true"></span>' : '<span></span>') +
+      '<span class="acc">' + acct[m[0]].label + '</span>' +
+      '<span class="sub"><b>' + m[2] + '</b> <span>' + m[1] + '</span></span>' +
+      '<span class="ago">' + m[4] + '</span></li>';
+  }
+  var rows1 = $('#rows1'), rows2 = $('#rows2'), rows3 = $('#rows3');
+  rows1.innerHTML = MSGS.map(function (m) { return rowHTML(m, false); }).join('');
+  rows2.innerHTML = NEED.map(function (m) { return rowHTML(m, false); }).join('');
+  rows3.innerHTML = MSGS.map(function (m) { return rowHTML(m, true); }).join('');
+  $('#accts').innerHTML = ACCOUNTS.map(function (a) {
+    return '<div class="acct" id="acct-' + a.id + '"><i></i><b>' + a.label + '</b><em>' + a.kind + '</em></div>';
+  }).join('');
+  ['#a2-total', '#m2-total', '#a3-total'].forEach(function (s) { $(s).textContent = fmt(TOTAL); });
+  ['#a2-n', '#m2-n', '#n-search'].forEach(function (s) { $(s).textContent = NEED.length; });
+  $('#n-inbox').textContent = fmt(acct.gmail.total);
+
+  /* ------------------------------------------------------------- ledger -- */
+  var calls = [];
+  var stamped = {};
+  var ledgerLast = $('#ledger-last'), ledgerBtn = $('#ledger-btn'), ledgerList = $('#ledger-list'),
+      ledgerPanel = $('#ledger-panel'), ledgerState = $('#ledger-state');
+  function stamp(key, tool, args) {
+    if (stamped[key]) return;
+    stamped[key] = true;
+    calls.push({ tool: tool, args: args });
+    ledgerBtn.textContent = calls.length + (calls.length === 1 ? ' call' : ' calls');
+    ledgerLast.innerHTML = '<b>' + tool + '</b> ' + args;
+    ledgerList.innerHTML = calls.map(function (c, i) {
+      return '<li><span>' + String(i + 1).padStart(2, '0') + '</span><span><b>' + c.tool + '</b> ' + c.args + '</span></li>';
+    }).join('');
+    ledgerState.textContent = 'calls:' + calls.length;
+    ledgerState.setAttribute('data-sc-verify-state', 'calls:' + calls.length);
+  }
+  ledgerBtn.addEventListener('click', function () {
+    var open = ledgerPanel.classList.toggle('open');
+    ledgerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && ledgerPanel.classList.contains('open')) { ledgerPanel.classList.remove('open'); ledgerBtn.setAttribute('aria-expanded', 'false'); ledgerBtn.focus(); }
+  });
+
+  /* --------------------------------------------------------- act drivers -- */
+  var actInbox = $('#inbox'), actSearch = $('#search'), actClean = $('#cleanup'), actSetup = $('#setup');
+  var st1 = $('#inbox .stage-in'), st3 = $('#cleanup .stage-in'), st5 = $('#setup .close-in');
+  var p = function (el) { return parseFloat(el.style.getPropertyValue('--sc-p')) || 0; };
+  var rowsByAcct1 = {};
+  Array.prototype.forEach.call(rows1.children, function (r) { (rowsByAcct1[r.dataset.acct] = rowsByAcct1[r.dataset.acct] || []).push(r); });
+  var newsRows3 = Array.prototype.filter.call(rows3.children, function (r) { return r.dataset.kind === 'news'; });
+  var last1 = '', last3 = '', last5 = '';
+
+  function driveInbox(pp) {
+    var total = 0, unread = 0, n = 0;
+    ACCOUNTS.forEach(function (a) {
+      var c = a.at === 0 ? 1 : clamp01((pp - a.at) / 0.1);
+      total += a.total * c; unread += a.unread * c;
+      var on = c > 0;
+      if (on) n++;
+      var el = $('#acct-' + a.id);
+      el.classList.toggle('on', c >= 1);
+      rowsByAcct1[a.id].forEach(function (r) { r.classList.toggle('off', !on); if (on) setTimeout(function () { r.classList.add('seen'); }, 400); });
+    });
+    $('#m1-total').textContent = fmt(total); $('#m1-unread').textContent = fmt(unread);
+    $('#a1-total').textContent = fmt(total); $('#a1-unread').textContent = fmt(unread);
+    $('#a1-acc').textContent = n; $('#a1-pl').textContent = n === 1 ? '' : 's';
+    $('#a1-lead').textContent = n === 4 ? 'Four accounts connected:' : 'Connecting:';
+    $('#f1').textContent = n + ' of 4 accounts connected';
+    if (!moved) $('#n-inbox').textContent = fmt(total);
+    if (pp > 0.05) stamp('list', 'email_list_accounts', '{}');
+    var sig = 'acc:' + n + ' total:' + fmt(total);
+    if (sig !== last1) { last1 = sig; st1.setAttribute('data-sc-verify-state', sig); }
+  }
+
+  function driveSearch(pp) {
+    if (pp > 0.15) stamp('search1', 'email_search', '{ "query": "is:unread to:me -category:newsletters", "returnBody": false }');
+  }
+
+  var moved = false;
+  function driveClean(pp) {
+    var sel = clamp01((pp - 0.06) / 0.44);
+    var selected = Math.round(sel * NEWS);
+    newsRows3.forEach(function (r, i) { r.classList.toggle('checked', sel > 0 && i / newsRows3.length <= sel); });
+    var wasMoved = moved;
+    moved = pp >= 0.58;
+    if (moved !== wasMoved) {
+      var collapse = function () { if (moved) newsRows3.forEach(function (r) { r.classList.add('collapsed'); }); };
+      newsRows3.forEach(function (r) { r.classList.toggle('gone', moved); if (!moved) r.classList.remove('collapsed'); });
+      if (moved) {
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) collapse();
+        else { newsRows3[newsRows3.length - 1].addEventListener('transitionend', collapse, { once: true }); setTimeout(collapse, 320); }
+      }
+    }
+    var left = moved ? TOTAL - NEWS : TOTAL;
+    $('#a3-sel').textContent = fmt(selected); $('#m3-sel').textContent = fmt(moved ? 0 : selected);
+    $('#m3-total').textContent = fmt(left);
+    $('#a3-moved').textContent = fmt(NEWS); $('#a3-left').textContent = fmt(left);
+    $('#f3').textContent = 'Archive: ' + fmt(moved ? NEWS : 0);
+    $('#n-archive').textContent = fmt(moved ? NEWS : 0);
+    if (moved) $('#n-inbox').textContent = fmt(left);
+    if (pp > 0.08) stamp('search2', 'email_search', '{ "query": "category:newsletters older_than:7d", "returnBody": false }');
+    if (moved) stamp('move', 'email_batch_move', '{ "ids": [' + NEWS + ' ids], "folder": "Archive" }');
+    var rulesOn = 0;
+    BLOCK.forEach(function (b, i) {
+      var on = pp >= 0.74 + i * 0.06;
+      if (on) { rulesOn++; stamp('rule' + i, 'email_create_block_rule', '{ "sender": "' + b + '", "action": "delete" }'); }
+      var li = $('#rule-' + i);
+      if (!li) { li = document.createElement('li'); li.id = 'rule-' + i; li.innerHTML = '<span>' + b + '</span><span>delete on arrival</span>'; $('#rules3').appendChild(li); }
+      li.classList.toggle('on', on);
+    });
+    $('#rules3-none').hidden = rulesOn > 0;
+    var sig = 'sel:' + selected + ' moved:' + (moved ? 1 : 0) + ' rules:' + rulesOn;
+    if (sig !== last3) { last3 = sig; st3.setAttribute('data-sc-verify-state', sig); }
+  }
+
+  var clientSel = $('#client'), cfg = $('#cfg'), cfgFile = $('#cfg-file');
+  function renderClient() {
+    var c = CLIENTS[clientSel.value];
+    cfg.textContent = c.text; cfgFile.textContent = c.file;
+    var sig = 'client:' + clientSel.value;
+    if (sig !== last5) { last5 = sig; st5.setAttribute('data-sc-verify-state', sig); }
+  }
+  clientSel.addEventListener('change', renderClient);
+  renderClient();
+  function driveSetup(pp) {
+    if (pp > 0.03) { stamp('ready', 'email-mcp-setup', 'your terminal, then ' + CLIENTS[clientSel.value].file); }
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (b) {
+    b.addEventListener('click', function () {
+      var src = $(b.getAttribute('data-copy'));
+      var text = src.value !== undefined ? src.value : src.textContent;
+      var out = $('#copied-' + src.id);
+      var done = function () { out.textContent = 'Copied'; setTimeout(function () { out.textContent = ''; }, 1800); };
+      var fail = function () { out.textContent = 'Select the text and copy it yourself: clipboard access was refused.'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fail); else fail();
+    });
+  });
+
+  /* ------------------------------------------------ folder nav (aria-current) */
+  var links = Array.prototype.slice.call(document.querySelectorAll('#folders a'));
+  var acts = ['inbox', 'search', 'cleanup', 'tools', 'setup'].map(function (id) { return document.getElementById(id); });
+  function currentFolder() {
+    var y = window.scrollY + window.innerHeight * 0.4, cur = acts[0];
+    acts.forEach(function (a) { if (a.offsetTop <= y) cur = a; });
+    links.forEach(function (l) { l.setAttribute('aria-current', l.dataset.for === cur.id ? 'true' : 'false'); });
+  }
+
+  /* ---------------------------------------------------------------- loop -- */
+  var lp = [-1, -1, -1, -1];
+  function tick() {
+    var a = p(actInbox), b = p(actSearch), c = p(actClean), d = p(actSetup);
+    if (a !== lp[0]) { lp[0] = a; driveInbox(a); }
+    if (b !== lp[1]) { lp[1] = b; driveSearch(b); }
+    if (c !== lp[2]) { lp[2] = c; driveClean(c); }
+    if (d !== lp[3]) { lp[3] = d; driveSetup(d); }
+    requestAnimationFrame(tick);
+  }
+  driveInbox(0); driveClean(0);
+  ScrollCraft.mount(document.body);
+  requestAnimationFrame(tick);
+  window.addEventListener('scroll', currentFolder, { passive: true });
+  currentFolder();
+})();
+</script>
+</body>
+</html>
