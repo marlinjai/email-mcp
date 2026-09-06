@@ -71,6 +71,49 @@ describe('CredentialStore', () => {
     expect(loaded).toBeNull();
   });
 
+  describe('findByProviderAndEmail (re-running setup updates in place)', () => {
+    const gmail = {
+      id: 'gmail-1',
+      name: 'Gmail',
+      provider: ProviderType.Gmail as const,
+      email: 'someone@gmail.com',
+      oauth: { access_token: 'a', refresh_token: 'r', expiry: '2026-12-31T00:00:00Z' },
+    };
+
+    it('finds the configured account for the same provider and address', async () => {
+      await store.save(gmail);
+      const found = await store.findByProviderAndEmail(ProviderType.Gmail, 'someone@gmail.com');
+      expect(found?.id).toBe('gmail-1');
+    });
+
+    it('matches the address case-insensitively and ignores surrounding whitespace', async () => {
+      await store.save(gmail);
+      const found = await store.findByProviderAndEmail(ProviderType.Gmail, '  Someone@Gmail.com ');
+      expect(found?.id).toBe('gmail-1');
+    });
+
+    it('does not match the same address on a different provider', async () => {
+      await store.save(gmail);
+      const found = await store.findByProviderAndEmail(ProviderType.IMAP, 'someone@gmail.com');
+      expect(found).toBeNull();
+    });
+
+    it('returns null when nothing is configured for that mailbox', async () => {
+      await store.save(gmail);
+      const found = await store.findByProviderAndEmail(ProviderType.Gmail, 'other@gmail.com');
+      expect(found).toBeNull();
+    });
+
+    it('saving under the found id replaces the account instead of adding a second one', async () => {
+      await store.save(gmail);
+      const existing = await store.findByProviderAndEmail(ProviderType.Gmail, 'someone@gmail.com');
+      await store.save({ ...gmail, id: existing!.id, oauth: { ...gmail.oauth, access_token: 'fresh' } });
+      const all = await store.list();
+      expect(all).toHaveLength(1);
+      expect(all[0].oauth?.access_token).toBe('fresh');
+    });
+  });
+
   it('returns null for nonexistent account', async () => {
     const loaded = await store.get('nope');
     expect(loaded).toBeNull();

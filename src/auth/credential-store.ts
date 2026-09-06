@@ -196,6 +196,24 @@ export class CredentialStore {
     return Object.values(data.accounts);
   }
 
+  /**
+   * The account already configured for this mailbox, if any. Provider plus
+   * address identifies a mailbox; the address comparison is case-insensitive
+   * because providers report it in varying case.
+   */
+  async findByProviderAndEmail(
+    provider: AccountCredentials['provider'],
+    email: string,
+  ): Promise<AccountCredentials | null> {
+    const wanted = email.trim().toLowerCase();
+    const data = this.read();
+    return (
+      Object.values(data.accounts).find(
+        (a) => a.provider === provider && a.email.trim().toLowerCase() === wanted,
+      ) ?? null
+    );
+  }
+
   async remove(id: string): Promise<void> {
     const data = this.read();
     delete data.accounts[id];

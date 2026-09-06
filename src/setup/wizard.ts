@@ -60,6 +60,24 @@ async function promptAccountName(defaultName: string): Promise<string> {
   return askText('Account name:', defaultName);
 }
 
+/**
+ * Re-running setup for a mailbox that is already configured must update that
+ * account in place (same id, so account ids saved in MCP client configs and
+ * tool calls keep working) instead of appending a duplicate entry.
+ */
+async function resolveAccountIdentity(
+  provider: ProviderTypeValue,
+  email: string,
+  defaultName: string,
+): Promise<{ id: string; name: string }> {
+  const existing = await store.findByProviderAndEmail(provider, email);
+  if (existing) {
+    console.log(`An account for ${email} already exists ("${existing.name}"), updating it in place.`);
+    return { id: existing.id, name: await promptAccountName(existing.name) };
+  }
+  return { id: crypto.randomUUID(), name: await promptAccountName(defaultName) };
+}
+
 // ---------------------------------------------------------------------------
 // Gmail Setup
 // ---------------------------------------------------------------------------
@@ -117,8 +135,7 @@ async function setupGmail(scopeModeFlag?: GmailScopeMode): Promise<void> {
   if (!email) throw new Error('Could not retrieve Gmail address from profile');
   console.log(`Authenticated as ${email}`);
 
-  const name = await promptAccountName('Gmail');
-  const id = crypto.randomUUID();
+  const { id, name } = await resolveAccountIdentity(ProviderType.Gmail, email.trim(), 'Gmail');
 
   const creds: AccountCredentials = {
     id,
@@ -168,8 +185,7 @@ async function setupOutlook(): Promise<void> {
   if (!email) throw new Error('Could not retrieve email from Microsoft account');
   console.log(`Authenticated as ${email}`);
 
-  const name = await promptAccountName('Outlook');
-  const id = crypto.randomUUID();
+  const { id, name } = await resolveAccountIdentity(ProviderType.Outlook, email.trim(), 'Outlook');
 
   const creds: AccountCredentials = {
     id,
@@ -208,8 +224,7 @@ async function setupICloud(): Promise<void> {
     password = await askPassword('App-specific password:');
   }
 
-  const name = await promptAccountName('iCloud');
-  const id = crypto.randomUUID();
+  const { id, name } = await resolveAccountIdentity(ProviderType.ICloud, email.trim(), 'iCloud');
 
   const creds: AccountCredentials = {
     id,
@@ -261,8 +276,7 @@ async function setupIMAP(): Promise<void> {
     smtpPort = parseInt(smtpPortStr, 10);
   }
 
-  const name = await promptAccountName('IMAP');
-  const id = crypto.randomUUID();
+  const { id, name } = await resolveAccountIdentity(ProviderType.IMAP, email.trim(), 'IMAP');
 
   const creds: AccountCredentials = {
     id,

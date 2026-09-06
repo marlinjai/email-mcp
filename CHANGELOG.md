@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.2] - 2026-09-06
+
+### Fixed
+- **Re-running `email-mcp-setup` for an already-configured mailbox created a duplicate account.** Every setup run minted a fresh account id, so re-authorizing the same Gmail/Outlook/iCloud/IMAP address (for example to refresh tokens or change the scope mode) left two entries for one mailbox, one of them dead. The wizard now looks the mailbox up by provider + address (case-insensitive) and updates that account in place, keeping its id so account ids saved in MCP client configs and tool calls stay valid. The existing name is offered as the default.
+
 ## [1.7.1] - 2026-09-06
 
 ### Security
