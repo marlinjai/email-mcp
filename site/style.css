@@ -1,51 +1,7 @@
+/* Dark only. The brand is black and gold (see assets/icon-1024.png); a light
+   theme forced a muddier bronze to stay readable on white and never matched
+   the icon, so it was dropped on 2026-09-06 along with the toggle. */
 :root {
-  color-scheme: light dark;
-  --bg: #fbfaf9;
-  --panel: #ffffff;
-  --ink: #14131a;
-  --muted: #6a6875;
-  --line: rgba(20, 19, 26, 0.10);
-  --accent: #8a6314;
-  --accent-ink: #ffffff;
-  --ok: #0f7b4f;
-  --danger: #c22b2b;
-  --shadow: 0 1px 2px rgba(20, 19, 26, .04), 0 18px 40px rgba(20, 19, 26, .07);
-  --radius: 14px;
-  /* Brushed gold: a diagonal metal gradient with a faint fine-line grain on top.
-     Darkest stop #c9a04a keeps --gold-ink at 7.6:1 (SC 1.4.3); light mode adds a
-     #8a6314 edge so the button boundary meets 3:1 on white (SC 1.4.11). */
-  --gold-ink: #1a1200;
-  --gold-edge: #8a6314;
-  --gold-grad:
-    repeating-linear-gradient(115deg, rgba(255, 255, 255, .10) 0 1px, rgba(255, 255, 255, 0) 1px 3px),
-    linear-gradient(135deg, #c9a04a 0%, #f1d37a 42%, #d9b552 58%, #c9a04a 100%);
-  /* Headline word: gradient text, so its lightest stop is what has to pass.
-     Light: #b8862e vs #fbfaf9 = 3.1:1, fine for the large heading (SC 1.4.3 large text). */
-  --gold-text-grad: linear-gradient(135deg, #8a6314 0%, #b8862e 50%, #8a6314 100%);
-  --bg-sheen: none;
-}
-/* Solid accent fallbacks (SC 1.4.3, 4.5:1 normal text): light --accent #8a6314 vs
-   #fbfaf9 5.20:1; dark --accent #e0bb54 vs #000 12.6:1. */
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #000000;
-    --panel: #121110;
-    --ink: #f3f2f7;
-    --muted: #a89f8c;
-    --line: rgba(255, 255, 255, 0.11);
-    --accent: #e0bb54;
-    --accent-ink: #1a1200;
-    --ok: #45d69a;
-    --danger: #ff7d7d;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .5);
-    --gold-edge: rgba(241, 211, 122, .35);
-    --gold-text-grad: linear-gradient(135deg, #c9a04a 0%, #f1d37a 50%, #e0bb54 100%);
-    --bg-sheen: radial-gradient(1200px 640px at 50% -12%, rgba(224, 187, 84, .12), rgba(224, 187, 84, 0) 62%) no-repeat;
-  }
-}
-
-:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #000000;
   --panel: #121110;
@@ -53,16 +9,23 @@
   --muted: #a89f8c;
   --line: rgba(255, 255, 255, 0.11);
   --accent: #e0bb54;
-  --accent-ink: #1a1200;
   --ok: #45d69a;
   --danger: #ff7d7d;
   --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .5);
+  --radius: 14px;
+  /* Brushed gold: a diagonal metal gradient with a faint fine-line grain on top.
+     Darkest stop #c9a04a keeps --gold-ink at 7.6:1 (WCAG SC 1.4.3). */
+  --gold-ink: #1a1200;
   --gold-edge: rgba(241, 211, 122, .35);
+  --gold-grad:
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, .10) 0 1px, rgba(255, 255, 255, 0) 1px 3px),
+    linear-gradient(135deg, #c9a04a 0%, #f1d37a 42%, #d9b552 58%, #c9a04a 100%);
+  /* Headline word as gradient text; darkest stop #c9a04a is 8.6:1 on black. */
   --gold-text-grad: linear-gradient(135deg, #c9a04a 0%, #f1d37a 50%, #e0bb54 100%);
-  --bg-sheen: radial-gradient(1200px 640px at 50% -12%, rgba(224, 187, 84, .12), rgba(224, 187, 84, 0) 62%) no-repeat;
 }
-
-:root[data-theme="light"] { color-scheme: light; }
+/* Text contrast on the darkest and lightest page surfaces (SC 1.4.3):
+   --ink #f3f2f7 on #000 18.9:1; --muted #a89f8c on #000 8.0:1 and still 5.6:1
+   at the brightest point of the gold glow behind the hero. */
 
 html { background: var(--bg); }
 
@@ -70,7 +33,14 @@ html { background: var(--bg); }
 
 body {
   margin: 0;
-  background: var(--bg-sheen), var(--bg);
+  /* Layers, top to bottom: gold glow behind the hero, a faint warm lift at the
+     bottom right, a brushed grain like the icon's metal, and a diagonal sheen
+     across pure black so the page reads as the same material as the card. */
+  background:
+    radial-gradient(900px 560px at 50% -6%, rgba(224, 187, 84, .22), rgba(224, 187, 84, 0) 70%),
+    radial-gradient(1400px 900px at 85% 110%, rgba(224, 187, 84, .06), rgba(224, 187, 84, 0) 60%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, .018) 0 1px, rgba(255, 255, 255, 0) 1px 4px),
+    linear-gradient(160deg, #0d0b08 0%, #000000 42%, #000000 58%, #0b0906 100%);
   color: var(--ink);
   font: 400 17px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -91,13 +61,15 @@ code, pre {
 section { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
 
 /* ------------------------------------------------------------------- nav */
+/* Full-width bar with the content kept on the 1000px column, so the tint reads
+   as a header band instead of a dark box floating over the hero glow. */
 .nav {
   position: sticky; top: 0; z-index: 20;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 14px 24px;
-  max-width: 1000px; margin: 0 auto;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter: blur(10px);
+  gap: 16px; padding: 14px max(24px, calc((100% - 1000px) / 2));
+  background: rgba(0, 0, 0, .45);
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  backdrop-filter: blur(12px);
 }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; color: inherit; text-decoration: none; letter-spacing: -0.02em; }
 .mark {
@@ -110,20 +82,6 @@ section { max-width: 1000px; margin: 0 auto; padding: 0 24px; }
 .nav nav a { color: var(--muted); text-decoration: none; font-size: 14.5px; font-weight: 500; }
 .nav nav a:hover { color: var(--ink); }
 .nav nav a.cta, .nav nav a.cta:hover { color: var(--gold-ink); }
-.theme-toggle {
-  display: grid; place-items: center;
-  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--panel); color: var(--muted); cursor: pointer; padding: 0;
-}
-.theme-toggle:hover { color: var(--ink); }
-.theme-toggle svg { width: 15px; height: 15px; }
-.theme-toggle .sun { display: none; }
-:root[data-theme="dark"] .theme-toggle .moon { display: none; }
-:root[data-theme="dark"] .theme-toggle .sun { display: block; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-toggle .moon { display: none; }
-  :root:not([data-theme="light"]) .theme-toggle .sun { display: block; }
-}
 
 /* ------------------------------------------------------------------ hero */
 .hero { padding-top: 76px; padding-bottom: 42px; text-align: center; }
