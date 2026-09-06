@@ -16,6 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The lumitra.co zone rewrites Cache-Control to a 4h browser TTL on the
+      # custom domain, overriding site/_headers. Stamping the stylesheet URL
+      # with the commit SHA makes browsers refetch it on every deploy anyway
+      # (HTML itself is never cached), so a redesign can't hide behind stale CSS.
+      - name: Cache-bust stylesheet with commit SHA
+        run: sed -i -E 's#(href="style\.css)(\?v=[^"]*)?"#\1?v='"${GITHUB_SHA::8}"'"#g' site/*.html && grep -ho 'style\.css?v=[^"]*' site/index.html
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
