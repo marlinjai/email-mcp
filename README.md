@@ -1,5 +1,7 @@
 # @marlinjai/email-mcp
 
+<p align="center"><img src="assets/icon-512.png" width="120" height="120" alt="email-mcp logo"></p>
+
 A unified MCP server for email access across Gmail, Outlook, iCloud, and generic IMAP providers.
 
 ## Features
