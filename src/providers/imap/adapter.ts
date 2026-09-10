@@ -175,7 +175,7 @@ export class ImapAdapter implements EmailProvider {
     const result = await client.mailboxCreate(fullPath);
     return {
       id: result.path,
-      name: result.name || name,
+      name,
       path: result.path,
       type: FolderType.Other,
     };
@@ -476,6 +476,7 @@ export class ImapAdapter implements EmailProvider {
       const uid = parseInt(id, 10);
       const msg = await client.fetchOne(String(uid), { source: true, uid: true, flags: true }, { uid: true });
       if (!msg) throw new Error(`Email ${id} not found`);
+      if (!msg.source) throw new Error(`Email ${id} has no source`);
 
       const parsed = await simpleParser(msg.source);
       (parsed as any).flags = msg.flags;
@@ -506,6 +507,7 @@ export class ImapAdapter implements EmailProvider {
 
       const messages: Email[] = [];
       for await (const msg of client.fetch(uids, { source: true, uid: true, flags: true })) {
+        if (!msg.source) continue;
         const parsed = await simpleParser(msg.source);
         (parsed as any).flags = msg.flags;
         messages.push(mapParsedEmail(parsed, 'INBOX', this.accountId, msg.uid));
@@ -548,6 +550,7 @@ export class ImapAdapter implements EmailProvider {
     try {
       const msg = await client.fetchOne(String(emailId), { source: true, uid: true }, { uid: true });
       if (!msg) throw new Error(`Email ${emailId} not found`);
+      if (!msg.source) throw new Error(`Email ${emailId} has no source`);
 
       const parsed = await simpleParser(msg.source);
       const attachment = (parsed.attachments || []).find(

@@ -1,6 +1,22 @@
+---
+type: plan
+status: completed
+date: 2026-02-16
+projects: [email-mcp]
+---
+
 # Email MCP Server — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+## Reality update (2026-09-10)
+
+Shipped. `@marlinjai/email-mcp` is live on npm at v1.7.2, all four providers
+(Gmail, Outlook, iCloud, generic IMAP) built, 301 passing tests, `tsc --noEmit`
+clean as of this session (11 pre-existing type errors fixed, see
+`backlog/intents/email-mcp-pre-existing-test-and-tsc-failures.md` in
+knowledge-base). Well past the founding task list; subsequent work is tracked on
+the repo's own `ROADMAP.md`, not this plan.
 
 **Goal:** Build a unified MCP server for email access across Gmail (REST API), Outlook (Graph API), iCloud (IMAP), and generic IMAP providers.
 

@@ -1,4 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
+import type { CodeChallengeMethod } from 'google-auth-library';
 import crypto from 'node:crypto';
 import type { OAuthTokens } from '../../models/types.js';
 
@@ -67,7 +68,7 @@ export class GmailAuth {
       scope: GMAIL_SCOPES[resolveScopeMode(scopeMode)],
       prompt: 'consent',
       code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
+      code_challenge_method: 'S256' as CodeChallengeMethod,
       state,
     });
 

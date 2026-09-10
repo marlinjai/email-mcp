@@ -17,7 +17,7 @@ import { mapGraphFolder, mapGraphMessage, mapGraphAttachment, buildGraphFilter, 
 
 export class OutlookAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Outlook;
-  private client: InstanceType<typeof Client> | null = null;
+  private client: ReturnType<typeof Client.init> | null = null;
   private accountId: string = '';
   private accessToken: string = '';
   private folderIdCache: Map<string, string> = new Map();
@@ -62,7 +62,7 @@ export class OutlookAdapter implements EmailProvider {
     }
   }
 
-  private ensureClient(): InstanceType<typeof Client> {
+  private ensureClient(): ReturnType<typeof Client.init> {
     if (!this.client) throw new Error('Not connected');
     return this.client;
   }
