@@ -22,6 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "EMAIL_MCP_INTEGRATION=1 vitest run tests/integration",
+    "typecheck": "tsc --noEmit",
+    "check:roadmap": "npx --yes github:marlinjai/actions-shared#roadmap-check-v1 --root . --max-age 30",
     "prepublishOnly": "node build.mjs"
   },
   "keywords": [
