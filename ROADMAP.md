@@ -22,20 +22,21 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and
       clears the Outlook cache entry, reporting what it could not do; the OAuth callback
       listener binds only the loopback addresses; saved attachments are owner-only (2026-09-18)
-- [ ] Release the credential hardening from pull request #15 to npm and update
-      `site/privacy.html` in the same step, so the published policy never describes behavior the
-      published package lacks. Sentences to change: the Outlook cache is now encrypted and named
-      `msal-cache.enc`; account removal now revokes the Google grant and clears the Outlook
-      cache (Microsoft consumer grants still need account.live.com/consent/Manage); saved
-      attachments are now owner-only; optionally, the sign-in listener is loopback-only. Then do
-      one real sign-in with Gmail and with Outlook and one remove-and-re-add on the released
-      version, since none of this has run against a real provider yet (2026-09-18)
+- [ ] Release the credential hardening from pull request #15 to npm as 1.8.0. The release
+      pull request #16 (branch `release/1.8.0`) bumps the version, turns the changelog into the
+      1.8.0 section and updates `site/privacy.html` and the README to the 1.8.0 behavior
+      (encrypted `msal-cache.enc`, Google revocation on account removal, loopback-only sign-in
+      listener, owner-only attachments). Remaining: merge it (this deploys the site), push the
+      tag `v1.8.0` (this publishes to npm through `.github/workflows/publish.yml`), confirm
+      `npm view @marlinjai/email-mcp version` prints 1.8.0, then do one real Gmail sign-in, one
+      real Outlook sign-in and one remove-and-re-add on 1.8.0, since none of this has run
+      against a real provider yet (2026-09-18)
 - [x] Marlin sent both Gmail replies ("Re: Anfrage zum Email MCP", "Re: email-mcp OAuth access")
       on 2026-09-06; the line saying they sat unsent was stale (2026-09-18)
-- [ ] Marlin: complete one real Outlook re-auth on the current package (the `marlinjp@hotmail.de`
-      account, currently `connected: false`) to confirm the OAuth `state` parameter added in
-      v1.7.1 is echoed back correctly by Microsoft's consumer authority; only unit-tested against
-      a mocked MSAL (Microsoft Authentication Library) client so far (2026-09-10)
+- [x] Real Outlook re-auth on 1.7.2 done by Marlin on 2026-09-18 (`marlinjp@hotmail.de`):
+      Microsoft's consumer authority echoed the OAuth `state` value back on the loopback
+      redirect, the wizard accepted it and updated the existing "hotmail" account in place, and
+      Claude Code then listed all 10 folders through the reconnected server (2026-09-18)
 - [ ] Marlin: open the scroll-driven demo at https://email.lumitra.co/demo/ on a real iPhone once
       and check touch scrolling through the pinned acts, the top tab strip, the tool rail and the
       copy buttons; only verified in headless Chrome so far (2026-09-10)
