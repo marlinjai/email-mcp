@@ -191,3 +191,4 @@ footer nav a:hover { color: var(--ink); }
   .claim, .grid { grid-template-columns: 1fr; gap: 20px; }
   .nav nav a:not(.cta) { display: none; }
 }
+.legal h3 { margin-top: 24px; margin-bottom: 8px; font-size: 1.05rem; }

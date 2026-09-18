@@ -245,6 +245,7 @@
     display: flex; flex-wrap: wrap; gap: var(--sc-2) var(--sc-5); align-items: baseline; }
   .foot a { color: inherit; }
   .foot p { margin: 0; max-width: 70ch; }
+  .foot .foot__m { display: none; } /* phones only: the sidebar carries npm on desktop */
 
   /* grounds painted per act, not drifted: a tool cuts, it does not dissolve */
   [data-sc-act] { background: var(--sc-canvas); }
@@ -252,25 +253,35 @@
 
   /* ------------------------------------------------------------- mobile -- */
   @media (max-width: 860px) {
-    :root { --side-w: 0px; }
+    /* Two-row header: brand and section tabs on top, the four accounts and
+       their connection types below, so phones keep what the sidebar shows. */
+    :root { --side-w: 0px; --tab-h: 3.25rem; --top-h: 6rem; }
     .side {
       top: 0; bottom: auto; right: 0; width: auto; height: var(--top-h);
-      flex-direction: row; align-items: center; gap: var(--sc-3);
+      display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: var(--tab-h) 1fr;
+      align-items: center; column-gap: var(--sc-2); row-gap: 0;
       padding: 0 var(--sc-3); border-right: 0; border-bottom: 1px solid var(--sc-hairline);
-      overflow-x: auto; scrollbar-width: none;
+      overflow: hidden;
     }
-    .side .group--accounts, .side-foot, .side .group > .sc-label { display: none; }
+    .side .brand { grid-column: 1; grid-row: 1; }
+    .side nav.group { grid-column: 2; grid-row: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .side .group--accounts { grid-column: 1 / -1; grid-row: 2; align-self: start; }
+    .side-foot, .side .group > .sc-label { display: none; }
+    #accts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.15rem var(--sc-3); }
+    .acct { grid-template-columns: 6px auto minmax(0, 1fr); gap: 0.4rem; padding: 0; font-size: 0.74rem; white-space: nowrap; }
+    .acct i { width: 6px; height: 6px; }
+    .acct em { font-size: 0.66rem; overflow: hidden; text-overflow: ellipsis; }
     .brand h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
     .brand { flex: 0 0 auto; }
     .brand small { display: none; }
     .folders { display: flex; gap: var(--sc-1); }
-    .folders a { padding: 0.3rem 0.55rem; font-size: 0.8rem; white-space: nowrap; }
+    .folders a { padding: 0.3rem 0.45rem; font-size: 0.8rem; white-space: nowrap; }
     .folders .n { display: none; }
     .folders a[aria-current="true"] span:first-child::before { display: none; }
     main { margin-left: 0; }
     .stage-in { top: var(--top-h); grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     .convo { border-right: 0; border-bottom: 1px solid var(--sc-hairline); padding: var(--sc-4); gap: var(--sc-3); }
-    .convo .help { display: none; }
+    .convo .help { margin-top: var(--sc-1); max-width: none; font-size: 0.74rem; line-height: 1.45; }
     .turn.user p { font-size: 0.95rem; }
     .turn.ai p { font-size: 0.84rem; }
     .row { grid-template-columns: 1.2rem 1fr auto; padding-inline: var(--sc-4); }
@@ -289,6 +300,32 @@
     .cfg pre { font-size: 0.72rem; }
     .foot { padding: var(--sc-3) var(--sc-4); }
     .ledger__hint { display: none; }
+    .foot .foot__m { display: inline; }
+    /* the close act must always show its legal links: the setup panel gives way first */
+    .close-in { grid-template-rows: minmax(0, 1fr) auto; }
+    .setup { min-height: 0; overflow: hidden; }
+    #setup .convo .help { display: none; }
+    .foot { column-gap: 0.5rem; }
+  }
+
+  /* ------------------------------------------------ touch hit areas (44px) --
+     The drawn size stays as designed; where growing the box would change the
+     look, an invisible ::before carries the 44px target instead. */
+  @media (pointer: coarse) {
+    .folders a { min-height: 44px; align-items: center; }
+    .brand { min-height: 44px; min-width: 44px; }
+    .btn, select.client { min-height: 44px; }
+    .ledger__count, .foot a, .side-foot a { position: relative; }
+    .ledger__count::before, .foot a::before, .side-foot a::before {
+      content: ""; position: absolute; left: 50%; top: 50%;
+      width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%);
+    }
+    /* stacked rows of links must not share a target: space them a full 44px apart */
+    .foot, .side-foot { row-gap: calc(44px - 1.2em); }
+    .foot a, .side-foot a { line-height: 1.2; }
+  }
+  @media (pointer: coarse) and (max-width: 860px) {
+    .brand { justify-content: center; }
   }
   @media (max-height: 700px) and (max-width: 860px) {
     .convo .turn.ai { display: none; }
@@ -532,6 +569,7 @@
         <footer class="foot">
           <a href="/">Home</a>
           <a href="https://github.com/marlinjai/email-mcp">GitHub</a>
+          <a class="foot__m" href="https://www.npmjs.com/package/@marlinjai/email-mcp">npm</a>
           <a href="https://github.com/marlinjai/email-mcp/blob/main/CHANGELOG.md">Changelog</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>

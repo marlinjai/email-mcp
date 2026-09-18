@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
 <link rel="icon" type="image/png" sizes="512x512" href="/assets/icon-512.png">
 <link rel="apple-touch-icon" href="/assets/icon-180.png">
-<link rel="stylesheet" href="style.css?v=20260906">
+<link rel="stylesheet" href="style.css?v=20260918">
 </head>
 <body>
 
@@ -24,7 +24,7 @@
 
 <main class="legal">
   <h1>Privacy policy</h1>
-  <p class="updated">Last updated: 31 August 2026</p>
+  <p class="updated">Last updated: 18 September 2026</p>
 
   <p><strong>The short version: email-mcp runs on your own machine and has no server of
   its own.</strong> It is an MCP (Model Context Protocol) server you install and run
@@ -35,15 +35,17 @@
 
   <h2>What email-mcp stores, and where</h2>
   <ul>
-    <li><strong>Account credentials.</strong> OAuth tokens (Gmail, Outlook) or
-    passwords (iCloud, generic IMAP) are stored in an encrypted file on your own
-    machine (<code>~/.email-mcp/credentials.enc</code>), AES-256-GCM encrypted with a
-    key derived from your machine's own hardware identifier, or from the
-    <code>EMAIL_MCP_KEY</code> environment variable if you set one. This file never
-    leaves your machine and is not sent to us.</li>
+    <li><strong>Account credentials.</strong> Gmail OAuth tokens, the Outlook access
+    token and passwords (iCloud, generic IMAP) are stored in an encrypted file on your
+    own machine (<code>~/.email-mcp/credentials.enc</code>). The Outlook refresh token is
+    kept by Microsoft's own sign-in library in a separate token cache on your machine
+    (<code>~/.email-mcp/msal-cache.json</code>). Neither file ever leaves your machine or
+    is sent to us. How both are protected is described in
+    <a href="#protection">How sensitive data is protected</a> below.</li>
     <li><strong>Downloaded attachments</strong> saved via the <code>email_save_attachment</code>
-    tool are written to a local directory (<code>~/.email-mcp/downloads</code> by default,
-    configurable with <code>EMAIL_MCP_DOWNLOADS_DIR</code>) and go nowhere else.</li>
+    tool are written as ordinary, unencrypted files to a local directory
+    (<code>~/.email-mcp/downloads</code> by default, configurable with
+    <code>EMAIL_MCP_DOWNLOADS_DIR</code>) and go nowhere else.</li>
     <li><strong>Email content itself is never stored by email-mcp.</strong> Messages are
     fetched from your provider on demand, at the request of whichever AI assistant is
     using the tool, and returned directly to that assistant. What that assistant's own
@@ -55,9 +57,9 @@
   <p>Exactly two kinds of outbound request exist, both initiated by your own machine:</p>
   <ul>
     <li><strong>To your email provider</strong> (Gmail's API, Microsoft Graph, or an IMAP/SMTP
-    server) — to authenticate, and to carry out whatever tool call you or your assistant
+    server), to authenticate, and to carry out whatever tool call you or your assistant
     triggered (search, send, organize, and so on).</li>
-    <li><strong>To Google's or Microsoft's OAuth endpoints</strong> — the standard
+    <li><strong>To Google's or Microsoft's OAuth endpoints</strong>, for the standard
     authorization-code exchange during setup, and silent token refresh afterward. This
     uses the shared OAuth Client ID this project ships with by default, or your own if
     you set <code>EMAIL_MCP_GMAIL_CLIENT_ID</code>/<code>EMAIL_MCP_OUTLOOK_CLIENT_ID</code>.
@@ -68,17 +70,136 @@
   update-check phone-home. You can verify this yourself: the source is on
   <a href="https://github.com/marlinjai/email-mcp">GitHub</a>.</p>
 
-  <h2>Gmail API scopes, specifically</h2>
+  <h2 id="protection">How sensitive data is protected</h2>
+  <p>The sensitive data email-mcp handles is of three kinds: OAuth tokens that grant
+  access to your Gmail or Outlook account, passwords for iCloud and IMAP accounts, and
+  the content of your email. This section describes the safeguards the software
+  applies to each. Every statement here can be checked against the source code on
+  <a href="https://github.com/marlinjai/email-mcp">GitHub</a>.</p>
+
+  <h3>No server of ours holds or sees your data</h3>
+  <p>email-mcp runs as a local process on your own computer. Your AI assistant starts it
+  and talks to it over standard input and output (stdio), not over a network port. Your
+  tokens, passwords and email content are handled only inside that process, on your
+  machine, and travel only between your machine and your email provider. We, the
+  publisher, operate no server in this flow and never receive, store or have access to
+  your tokens, your passwords or the content of your email.</p>
+
+  <h3>Encryption at rest</h3>
+  <ul>
+    <li><strong>Credentials file.</strong> <code>~/.email-mcp/credentials.enc</code> is
+    encrypted with AES-256-GCM, an authenticated cipher: any modification of the file is
+    detected and decryption fails rather than returning altered data. The 256-bit key is
+    derived with PBKDF2 (HMAC-SHA512, 100,000 iterations) from a fresh random 32-byte
+    salt, and a fresh random 16-byte initialisation vector is used, every time the file
+    is written.</li>
+    <li><strong>Where the key comes from.</strong> The key is derived either from the
+    <code>EMAIL_MCP_KEY</code> environment variable, if you set one, or from your
+    machine's stable hardware or operating system identifier combined with your user
+    name. On a machine where no such identifier can be read, the computer's host name is
+    used instead. No key is stored in the file itself.</li>
+    <li><strong>What this protects against, and what it does not.</strong> The
+    encryption keeps the file unreadable if it is copied off your machine, for example
+    into a backup, a synced folder or onto another computer. It is not a defence
+    against software already running under your own user account on the same machine,
+    which can derive the same key. For that reason the files are also restricted by
+    permissions: on macOS and Linux, <code>~/.email-mcp</code> is created readable only
+    by your user account and the credential files are written with owner-only access.
+    Setting your own <code>EMAIL_MCP_KEY</code> ties the key to a secret you hold rather
+    than to the machine.</li>
+    <li><strong>Outlook token cache.</strong> The Outlook refresh token lives in
+    <code>~/.email-mcp/msal-cache.json</code>, written by Microsoft's authentication
+    library (MSAL). This file is protected by the same owner-only file permissions on
+    macOS and Linux, but it is not additionally encrypted by email-mcp.</li>
+    <li><strong>Email content is not stored.</strong> Messages are fetched from your
+    provider on demand and passed straight to your AI assistant; email-mcp keeps no copy,
+    cache or index of them on disk. The only email data it writes to disk is an
+    attachment you explicitly ask it to save, described above.</li>
+  </ul>
+
+  <h3>Encryption in transit</h3>
+  <ul>
+    <li>All traffic to Google (the Gmail API and Google's OAuth endpoints) and to
+    Microsoft (Microsoft Graph and Microsoft's sign-in endpoints) uses HTTPS, that is,
+    Transport Layer Security (TLS).</li>
+    <li>For iCloud and generic IMAP accounts, the IMAP connection uses TLS by default.
+    Outgoing mail over SMTP uses TLS from the first byte on port 465, and on port 587
+    upgrades the connection to TLS (STARTTLS) when the mail server offers it. The setup
+    wizard lets you turn TLS off for an IMAP server you control; we recommend leaving it
+    on.</li>
+  </ul>
+
+  <h3>How sign-in is secured</h3>
+  <ul>
+    <li><strong>You sign in with Google or Microsoft directly.</strong> Your Google or
+    Microsoft password is entered only on the provider's own sign-in page in your
+    browser. email-mcp never sees it; it receives only the tokens the provider issues
+    after you consent.</li>
+    <li><strong>PKCE.</strong> Both the Gmail and the Outlook sign-in use Proof Key for
+    Code Exchange (PKCE) with the S256 method: a one-time secret generated on your
+    machine for each sign-in must be presented to exchange the authorization code for
+    tokens, so an intercepted code is useless on its own.</li>
+    <li><strong>State parameter.</strong> Each sign-in also carries a fresh random
+    <code>state</code> value. The temporary callback listener on
+    <code>http://localhost</code> accepts an authorization code only if it arrives with
+    that exact value, and rejects anything else without exchanging it. This protects
+    against cross-site request forgery. The listener exists only during sign-in and
+    shuts down once a code is received, or after two minutes.</li>
+    <li><strong>Minimum scopes, with a more restricted option.</strong> email-mcp
+    requests only the Gmail scopes needed for the features it offers (listed under
+    <a href="#gmail-scopes">Gmail API scopes</a>), and the setup wizard offers a
+    Restricted mode that leaves out the permanent-delete permission. For Outlook it
+    requests <code>Mail.ReadWrite</code>, <code>Mail.Send</code>,
+    <code>MailboxSettings.ReadWrite</code> and <code>offline_access</code>.</li>
+    <li><strong>iCloud</strong> uses an app-specific password you create at Apple, not
+    your Apple Account password, and you can revoke it at Apple at any time.</li>
+  </ul>
+
+  <h3>Revoking access and deleting your data</h3>
+  <ul>
+    <li><strong>Remove one account:</strong> the <code>email_remove_account</code> tool
+    deletes that account's stored credentials from <code>credentials.enc</code>.</li>
+    <li><strong>Remove everything:</strong> deleting the <code>~/.email-mcp</code>
+    folder removes every token, password, cache and saved attachment email-mcp has
+    stored (unless you pointed <code>EMAIL_MCP_DOWNLOADS_DIR</code> elsewhere, in which
+    case delete that folder too).</li>
+    <li><strong>Revoke the grant at the provider:</strong> removing an account locally
+    does not by itself cancel the permission you gave; email-mcp does not call the
+    providers' revocation endpoints. To cancel it, remove email-mcp in your Google
+    Account (Security, Third-party apps with account access, or
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>)
+    or your Microsoft account (Privacy, Apps and services, or
+    <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a>),
+    and delete app-specific passwords at Apple. After that, any token still on your
+    machine stops working.</li>
+    <li>Because we hold none of your data, there is nothing for us to delete on our
+    side. If you have a question about this, contact us at the address below.</li>
+  </ul>
+
+  <h2 id="gmail-scopes">Gmail API scopes, specifically</h2>
   <p>The setup wizard lets you choose between two Gmail permission levels. <strong>Full</strong>
   (the default) requests <code>https://mail.google.com/</code>, <code>gmail.modify</code> and
   <code>gmail.settings.basic</code>, which includes the ability to permanently delete
   messages. <strong>Restricted</strong> drops the permanent-delete permission and keeps
   only <code>gmail.modify</code> and <code>gmail.settings.basic</code>, which covers every
   other tool this server exposes (read, send, label, archive, move to trash, manage
-  filters). Use of this data is limited to providing the email features you request
-  through your AI assistant, in accordance with the
+  filters).</p>
+
+  <h2 id="limited-use">Google user data: Limited Use</h2>
+  <p>email-mcp's use and transfer to any other app of information received from Google
+  APIs will adhere to the
   <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API
-  Services User Data Policy</a>, including its Limited Use requirements.</p>
+  Services User Data Policy</a>, including the Limited Use requirements. Specifically:</p>
+  <ul>
+    <li>Gmail data is used only to provide the email features you request through your AI
+    assistant: reading, searching, sending, organizing and filtering your mail.</li>
+    <li>It is transferred only to the AI assistant you connected email-mcp to, at your
+    request, as part of those features. What that assistant's provider does with it is
+    governed by that provider's own terms.</li>
+    <li>It is never sold, never used for advertising, and never used by us to develop,
+    improve or train generalized or non-personalized AI or machine learning models.</li>
+    <li>No human at this project reads it, because it never reaches us.</li>
+  </ul>
 
   <h2>What we collect</h2>
   <p>Nothing. There is no account with this project, no signup, and no server-side
@@ -93,9 +214,8 @@
   <h2>Data removal</h2>
   <p>Uninstalling the package and deleting <code>~/.email-mcp</code> removes everything
   email-mcp ever stored, because everything it stored lives on your machine. To revoke
-  its access to your Google or Microsoft account at the source, remove it from your
-  provider's own connected-apps settings (Google Account → Security → Third-party
-  access; Microsoft Account → Apps and services).</p>
+  its access to your Google or Microsoft account at the source, follow the steps under
+  <a href="#protection">Revoking access and deleting your data</a>.</p>
 
   <h2>Changes</h2>
   <p>If this policy changes, the change will be visible on this page. The core
