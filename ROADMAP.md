@@ -33,10 +33,10 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       against a real provider yet (2026-09-18)
 - [x] Marlin sent both Gmail replies ("Re: Anfrage zum Email MCP", "Re: email-mcp OAuth access")
       on 2026-09-06; the line saying they sat unsent was stale (2026-09-18)
-- [ ] Marlin: complete one real Outlook re-auth on the current package (the `marlinjp@hotmail.de`
-      account, currently `connected: false`) to confirm the OAuth `state` parameter added in
-      v1.7.1 is echoed back correctly by Microsoft's consumer authority; only unit-tested against
-      a mocked MSAL (Microsoft Authentication Library) client so far (2026-09-10)
+- [x] Real Outlook re-auth on 1.7.2 done by Marlin on 2026-09-18 (`marlinjp@hotmail.de`):
+      Microsoft's consumer authority echoed the OAuth `state` value back on the loopback
+      redirect, the wizard accepted it and updated the existing "hotmail" account in place, and
+      Claude Code then listed all 10 folders through the reconnected server (2026-09-18)
 - [ ] Marlin: open the scroll-driven demo at https://email.lumitra.co/demo/ on a real iPhone once
       and check touch scrolling through the pinned acts, the top tab strip, the tool rail and the
       copy buttons; only verified in headless Chrome so far (2026-09-10)
