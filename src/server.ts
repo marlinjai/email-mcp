@@ -7,6 +7,14 @@ import { registerSendingTools } from './tools/sending.js';
 import { registerOrganizingTools } from './tools/organizing.js';
 import { registerModerationTools } from './tools/moderation.js';
 
+/**
+ * The version reported to MCP clients in the initialize handshake. Kept equal
+ * to package.json's version by tests/integration/smoke.test.ts; bump both
+ * together. (A runtime read of package.json is not used because esbuild
+ * bundles entry points at different depths under dist/.)
+ */
+export const SERVER_VERSION = '1.8.0';
+
 export interface ServerResult {
   server: McpServer;
   accountManager: AccountManager;
@@ -17,7 +25,7 @@ export async function createServer(accountManager?: AccountManager): Promise<Ser
 
   const server = new McpServer({
     name: 'email-mcp',
-    version: '0.1.0',
+    version: SERVER_VERSION,
   });
 
   // Register all tool groups

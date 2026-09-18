@@ -39,13 +39,16 @@
     token and passwords (iCloud, generic IMAP) are stored in an encrypted file on your
     own machine (<code>~/.email-mcp/credentials.enc</code>). The Outlook refresh token is
     kept by Microsoft's own sign-in library in a separate token cache on your machine
-    (<code>~/.email-mcp/msal-cache.json</code>). Neither file ever leaves your machine or
+    (<code>~/.email-mcp/msal-cache.enc</code>). Neither file ever leaves your machine or
     is sent to us. How both are protected is described in
     <a href="#protection">How sensitive data is protected</a> below.</li>
     <li><strong>Downloaded attachments</strong> saved via the <code>email_save_attachment</code>
     tool are written as ordinary, unencrypted files to a local directory
     (<code>~/.email-mcp/downloads</code> by default, configurable with
-    <code>EMAIL_MCP_DOWNLOADS_DIR</code>) and go nowhere else.</li>
+    <code>EMAIL_MCP_DOWNLOADS_DIR</code>) and go nowhere else. On macOS and Linux each
+    saved file is readable and writable only by your user account (permissions 0600),
+    and folders email-mcp creates for them are accessible only by your user account
+    (0700).</li>
     <li><strong>Email content itself is never stored by email-mcp.</strong> Messages are
     fetched from your provider on demand, at the request of whichever AI assistant is
     using the tool, and returned directly to that assistant. What that assistant's own
@@ -108,9 +111,12 @@
     Setting your own <code>EMAIL_MCP_KEY</code> ties the key to a secret you hold rather
     than to the machine.</li>
     <li><strong>Outlook token cache.</strong> The Outlook refresh token lives in
-    <code>~/.email-mcp/msal-cache.json</code>, written by Microsoft's authentication
-    library (MSAL). This file is protected by the same owner-only file permissions on
-    macOS and Linux, but it is not additionally encrypted by email-mcp.</li>
+    <code>~/.email-mcp/msal-cache.enc</code>, the token cache of Microsoft's
+    authentication library (MSAL). email-mcp encrypts this file with the same
+    AES-256-GCM scheme and key derivation as <code>credentials.enc</code> (so
+    <code>EMAIL_MCP_KEY</code>, if you set one, protects both files), and writes it
+    with owner-only access on macOS and Linux. A cache left in plain text by an older
+    version is encrypted and the plain-text copy deleted the first time it is read.</li>
     <li><strong>Email content is not stored.</strong> Messages are fetched from your
     provider on demand and passed straight to your AI assistant; email-mcp keeps no copy,
     cache or index of them on disk. The only email data it writes to disk is an
@@ -143,8 +149,10 @@
     <code>state</code> value. The temporary callback listener on
     <code>http://localhost</code> accepts an authorization code only if it arrives with
     that exact value, and rejects anything else without exchanging it. This protects
-    against cross-site request forgery. The listener exists only during sign-in and
-    shuts down once a code is received, or after two minutes.</li>
+    against cross-site request forgery. The listener accepts connections from this
+    computer only (it listens on the loopback address, not on your network), exists
+    only during sign-in, and shuts down once a code is received, or after two
+    minutes.</li>
     <li><strong>Minimum scopes, with a more restricted option.</strong> email-mcp
     requests only the Gmail scopes needed for the features it offers (listed under
     <a href="#gmail-scopes">Gmail API scopes</a>), and the setup wizard offers a
@@ -158,19 +166,26 @@
   <h3>Revoking access and deleting your data</h3>
   <ul>
     <li><strong>Remove one account:</strong> the <code>email_remove_account</code> tool
-    deletes that account's stored credentials from <code>credentials.enc</code>.</li>
+    deletes that account's stored credentials from <code>credentials.enc</code>. For a
+    Gmail account it also asks Google to revoke the permission you gave; for an Outlook
+    account it also deletes the account's tokens from the Outlook token cache. The
+    result tells you what it could not do.</li>
     <li><strong>Remove everything:</strong> deleting the <code>~/.email-mcp</code>
     folder removes every token, password, cache and saved attachment email-mcp has
     stored (unless you pointed <code>EMAIL_MCP_DOWNLOADS_DIR</code> elsewhere, in which
     case delete that folder too).</li>
-    <li><strong>Revoke the grant at the provider:</strong> removing an account locally
-    does not by itself cancel the permission you gave; email-mcp does not call the
-    providers' revocation endpoints. To cancel it, remove email-mcp in your Google
-    Account (Security, Third-party apps with account access, or
-    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>)
-    or your Microsoft account (Privacy, Apps and services, or
-    <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a>),
-    and delete app-specific passwords at Apple. After that, any token still on your
+    <li><strong>Revoke the grant at the provider:</strong> for Gmail, removing the
+    account revokes the grant at Google automatically. If Google cannot be reached or
+    refuses, the result says so and links to
+    <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>,
+    where you can remove email-mcp yourself (Security, Third-party apps with account
+    access). Microsoft offers no endpoint through which an app can revoke this
+    permission for a personal Microsoft account, so for Outlook the tokens are deleted
+    from your machine but the permission stays until you remove email-mcp in your
+    Microsoft account
+    (Privacy, Apps and services, or
+    <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a>).
+    Delete app-specific passwords at Apple. After that, any token still on your
     machine stops working.</li>
     <li>Because we hold none of your data, there is nothing for us to delete on our
     side. If you have a question about this, contact us at the address below.</li>

@@ -248,6 +248,20 @@ export EMAIL_MCP_KEY="your-strong-passphrase"
 When `EMAIL_MCP_KEY` is set, existing credential files are transparently
 re-encrypted with the passphrase the next time they are read.
 
+The Outlook refresh token lives in the token cache of Microsoft's authentication
+library (MSAL), `~/.email-mcp/msal-cache.enc`, encrypted with the same scheme and key
+derivation as `credentials.enc`, so `EMAIL_MCP_KEY` protects both files. Versions before 1.8.0
+kept this cache as plain JSON in `~/.email-mcp/msal-cache.json`; 1.8.0 encrypts it and
+deletes the plain file the first time it reads it, without signing you out. Going back
+to an older version afterwards means signing in to Outlook again.
+
+Attachments saved with `email_save_attachment` are written owner-only (`0600`), and
+folders email-mcp creates for them are `0700`. They are not encrypted.
+
+The OAuth sign-in callback started by `email-mcp-setup` listens on the loopback
+addresses only (`127.0.0.1`, and `::1` when available), so nothing else on your network
+can reach it.
+
 ## Support
 
 If this project is useful to you, consider supporting its development:

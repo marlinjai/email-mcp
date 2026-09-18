@@ -7,11 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-18
+
+Credential hardening. A minor release: no tool was renamed or removed, but three things behave differently after upgrading, all listed under "Changed" below.
+
+### Changed
+- **Upgrading migrates the Outlook token cache once, without signing anyone out.** `~/.email-mcp/msal-cache.json` is replaced by the encrypted `~/.email-mcp/msal-cache.enc` the first time an Outlook account is used. After that migration, going back to 1.7.x means signing in to Outlook again (1.7.x cannot read the encrypted file).
+- **`email_remove_account` now acts at the provider and reports the outcome.** It revokes the Google grant for Gmail and clears the account from the local Outlook token cache, and the result carries a `revocation` field (plus `tokenCache` for Outlook) stating what it could not do, with a link for doing it by hand.
+- **Removing an unknown account id is now an error.** It used to report `success: true` for an id that did not exist.
+
 ### Security
-- **The OAuth sign-in callback listens on loopback only.** During `email-mcp-setup` the temporary callback server for the Gmail and Outlook sign-in used to listen on every network interface for up to two minutes. It now binds `127.0.0.1`, plus the same port on `::1` when the machine has IPv6, so nothing else on the network can reach it. The redirect URI stays `http://localhost:<port>` for both providers (it must match the `http://localhost` registration at Microsoft); binding both loopback addresses means the browser reaches the listener whether `localhost` resolves to `127.0.0.1` or to `::1` first, as it can on macOS.
+- **The OAuth sign-in callback listens on loopback only (this computer only).** During `email-mcp-setup` the temporary callback server for the Gmail and Outlook sign-in used to listen on every network interface for up to two minutes. It now binds `127.0.0.1`, plus the same port on `::1` when the machine has IPv6, so nothing else on the network can reach it. The redirect URI stays `http://localhost:<port>` for both providers (it must match the `http://localhost` registration at Microsoft); binding both loopback addresses means the browser reaches the listener whether `localhost` resolves to `127.0.0.1` or to `::1` first, as it can on macOS.
 - **The Outlook token cache is encrypted at rest.** The MSAL token cache, which holds the Outlook refresh token, moves from plain JSON in `~/.email-mcp/msal-cache.json` to `~/.email-mcp/msal-cache.enc`, encrypted with the same AES-256-GCM scheme and key derivation as `credentials.enc` (so `EMAIL_MCP_KEY`, when set, now protects both files). An existing plaintext cache is migrated on first use: it is read, written back encrypted, and the plaintext file is deleted, so nobody is signed out by the upgrade. A modified or undecryptable cache is reported as a clear error telling you to delete the file and re-run `email-mcp-setup`; it is never overwritten or allowed to crash the server. Downgrading to an older version after this migration requires signing in to Outlook again.
 - **`email_remove_account` cleans up at the provider.** For Gmail it now revokes the grant through Google's token revocation endpoint, and for Outlook it removes the account's tokens from the local MSAL cache. The tool result reports what happened (`revocation.status`: `revoked`, `failed`, `local_only` or `not_applicable`, with a detail message). A failed revocation never blocks local removal and is reported with a link to remove access manually. Microsoft has no endpoint to revoke a refresh token for a personal Microsoft account, so the Outlook result says so and points to account.live.com/consent/Manage. Removing an unknown account id now returns an error instead of reporting success.
 - **Saved attachments are owner-only.** Files written by `email_save_attachment` get `0600` permissions (also when they replace an existing file), and directories email-mcp creates for them, including the downloads directory itself, get `0700`. A downloads directory that already exists keeps its permissions.
+
+### Fixed
+- **The server reported version `0.1.0` to MCP clients.** The version sent in the MCP initialize handshake was never updated after the first release; it now matches the package version, and a test fails if the two drift apart.
 
 ## [1.7.2] - 2026-09-06
 
@@ -226,6 +238,7 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.8.0]: https://github.com/marlinjai/email-mcp/compare/v1.7.2...v1.8.0
 [1.2.3]: https://github.com/marlinjai/email-mcp/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/marlinjai/email-mcp/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/marlinjai/email-mcp/compare/v1.2.0...v1.2.1
