@@ -219,8 +219,14 @@ describe('Account tools', () => {
       expect(hasRegisteredTool(server, 'email_remove_account')).toBe(true);
     });
 
-    it('removes account by id', async () => {
-      (accountManager.removeAccount as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    it('removes account by id and reports the revocation outcome', async () => {
+      (accountManager.removeAccount as ReturnType<typeof vi.fn>).mockResolvedValue({
+        success: true,
+        accountId: 'gmail-1',
+        provider: 'gmail',
+        email: 'test@gmail.com',
+        revocation: { status: 'failed', detail: 'Google refused the revocation (HTTP 400)' },
+      });
 
       const result = await callTool(server, 'email_remove_account', {
         accountId: 'gmail-1',
@@ -229,6 +235,24 @@ describe('Account tools', () => {
       expect(accountManager.removeAccount).toHaveBeenCalledWith('gmail-1');
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
+      expect(parsed.revocation.status).toBe('failed');
+      expect(parsed.revocation.detail).toContain('HTTP 400');
+    });
+
+    it('passes the Outlook token-cache and Microsoft consent-page note through', async () => {
+      (accountManager.removeAccount as ReturnType<typeof vi.fn>).mockResolvedValue({
+        success: true,
+        accountId: 'outlook-1',
+        provider: 'outlook',
+        email: 'a@outlook.com',
+        tokenCache: { status: 'removed', detail: 'removed' },
+        revocation: { status: 'local_only', detail: 'remove email-mcp at https://account.live.com/consent/Manage.' },
+      });
+
+      const result = await callTool(server, 'email_remove_account', { accountId: 'outlook-1' });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.tokenCache.status).toBe('removed');
+      expect(parsed.revocation.detail).toContain('account.live.com/consent/Manage');
     });
 
     it('returns error when removal fails', async () => {

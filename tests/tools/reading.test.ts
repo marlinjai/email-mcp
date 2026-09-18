@@ -332,6 +332,67 @@ describe('Reading tools', () => {
       expect(fs.existsSync(parsed.path)).toBe(true);
     });
 
+    it.skipIf(process.platform === 'win32')(
+      'saves the attachment owner-only (0600) and creates directories owner-only (0700)',
+      async () => {
+        const result = await callTool(server, 'email_save_attachment', {
+          accountId: 'acct-1',
+          emailId: 'msg-1',
+          attachmentId: 'att-1',
+          outputPath: 'invoices/2026/document.pdf',
+        });
+        const parsed = JSON.parse(result.content[0].text);
+
+        expect(fs.statSync(parsed.path).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(path.join(tmpDir, 'invoices')).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(path.join(tmpDir, 'invoices', '2026')).mode & 0o777).toBe(0o700);
+      },
+    );
+
+    it.skipIf(process.platform === 'win32')('creates a missing downloads directory owner-only (0700)', async () => {
+      const downloads = path.join(tmpDir, 'fresh-downloads');
+      vi.stubEnv('EMAIL_MCP_DOWNLOADS_DIR', downloads);
+
+      await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: 'document.pdf',
+      });
+
+      expect(fs.statSync(downloads).mode & 0o777).toBe(0o700);
+      expect(fs.statSync(path.join(downloads, 'document.pdf')).mode & 0o777).toBe(0o600);
+    });
+
+    it.skipIf(process.platform === 'win32')('tightens an existing, world-readable file it overwrites to 0600', async () => {
+      const target = path.join(tmpDir, 'document.pdf');
+      fs.writeFileSync(target, 'old', { mode: 0o644 });
+      fs.chmodSync(target, 0o644);
+
+      await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: 'document.pdf',
+      });
+
+      expect(fs.readFileSync(target, 'utf-8')).toBe('file-content');
+      expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+    });
+
+    it.skipIf(process.platform === 'win32')('leaves the permissions of an existing downloads directory alone', async () => {
+      fs.chmodSync(tmpDir, 0o755);
+
+      await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: 'msg-1',
+        attachmentId: 'att-1',
+        outputPath: 'document.pdf',
+      });
+
+      expect(fs.statSync(tmpDir).mode & 0o777).toBe(0o755);
+    });
+
     it('rejects an outputPath that escapes the downloads directory via traversal', async () => {
       const result = await callTool(server, 'email_save_attachment', {
         accountId: 'acct-1',

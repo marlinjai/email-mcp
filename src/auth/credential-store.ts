@@ -138,6 +138,32 @@ function decrypt(ciphertext: string, seeds: string[]): { plaintext: string; seed
   throw lastError ?? new Error('Unable to decrypt credentials');
 }
 
+/**
+ * Encrypts a string with the same AES-256-GCM scheme and machine-derived key
+ * (EMAIL_MCP_KEY, else the stable machine id, else the legacy hostname seed)
+ * that protects credentials.enc. Shared so every secret file email-mcp writes
+ * (credentials.enc, the Outlook MSAL token cache) uses one implementation.
+ */
+export function encryptWithMachineKey(plaintext: string): string {
+  return encrypt(plaintext, getSeedCandidates()[0]);
+}
+
+/**
+ * Decrypts a payload written by encryptWithMachineKey (or by any older version
+ * of credentials.enc). `usedLegacyKey` is true when a fallback seed matched, so
+ * the caller can re-encrypt with the preferred key. Throws on a wrong key or on
+ * any modification of the payload (GCM authentication), and on a payload that
+ * is not the expected JSON envelope.
+ */
+export function decryptWithMachineKey(ciphertext: string): {
+  plaintext: string;
+  usedLegacyKey: boolean;
+} {
+  const seeds = getSeedCandidates();
+  const { plaintext, seedUsed } = decrypt(ciphertext, seeds);
+  return { plaintext, usedLegacyKey: seedUsed !== seeds[0] };
+}
+
 interface StoredData {
   accounts: Record<string, AccountCredentials>;
 }
@@ -158,13 +184,12 @@ export class CredentialStore {
       return { accounts: {} };
     }
     const raw = fs.readFileSync(this.filePath, 'utf-8');
-    const seeds = getSeedCandidates();
-    const { plaintext, seedUsed } = decrypt(raw, seeds);
+    const { plaintext, usedLegacyKey } = decryptWithMachineKey(raw);
     const data = JSON.parse(plaintext) as StoredData;
 
     // Transparently re-encrypt with the preferred seed when an older/legacy
     // seed was used, so future reads survive hostname changes (issue #4).
-    if (seedUsed !== seeds[0]) {
+    if (usedLegacyKey) {
       try {
         this.write(data);
       } catch {
@@ -176,7 +201,7 @@ export class CredentialStore {
 
   private write(data: StoredData): void {
     const json = JSON.stringify(data);
-    const encrypted = encrypt(json, getSeedCandidates()[0]);
+    const encrypted = encryptWithMachineKey(json);
     fs.writeFileSync(this.filePath, encrypted, { mode: 0o600 });
   }
 

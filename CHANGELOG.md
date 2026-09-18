@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+- **The OAuth sign-in callback listens on loopback only.** During `email-mcp-setup` the temporary callback server for the Gmail and Outlook sign-in used to listen on every network interface for up to two minutes. It now binds `127.0.0.1`, plus the same port on `::1` when the machine has IPv6, so nothing else on the network can reach it. The redirect URI stays `http://localhost:<port>` for both providers (it must match the `http://localhost` registration at Microsoft); binding both loopback addresses means the browser reaches the listener whether `localhost` resolves to `127.0.0.1` or to `::1` first, as it can on macOS.
+- **The Outlook token cache is encrypted at rest.** The MSAL token cache, which holds the Outlook refresh token, moves from plain JSON in `~/.email-mcp/msal-cache.json` to `~/.email-mcp/msal-cache.enc`, encrypted with the same AES-256-GCM scheme and key derivation as `credentials.enc` (so `EMAIL_MCP_KEY`, when set, now protects both files). An existing plaintext cache is migrated on first use: it is read, written back encrypted, and the plaintext file is deleted, so nobody is signed out by the upgrade. A modified or undecryptable cache is reported as a clear error telling you to delete the file and re-run `email-mcp-setup`; it is never overwritten or allowed to crash the server. Downgrading to an older version after this migration requires signing in to Outlook again.
+- **`email_remove_account` cleans up at the provider.** For Gmail it now revokes the grant through Google's token revocation endpoint, and for Outlook it removes the account's tokens from the local MSAL cache. The tool result reports what happened (`revocation.status`: `revoked`, `failed`, `local_only` or `not_applicable`, with a detail message). A failed revocation never blocks local removal and is reported with a link to remove access manually. Microsoft has no endpoint to revoke a refresh token for a personal Microsoft account, so the Outlook result says so and points to account.live.com/consent/Manage. Removing an unknown account id now returns an error instead of reporting success.
+- **Saved attachments are owner-only.** Files written by `email_save_attachment` get `0600` permissions (also when they replace an existing file), and directories email-mcp creates for them, including the downloads directory itself, get `0700`. A downloads directory that already exists keeps its permissions.
+
 ## [1.7.2] - 2026-09-06
 
 ### Fixed
