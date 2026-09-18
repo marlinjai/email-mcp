@@ -14,7 +14,7 @@ projects: [email-mcp]
 Superseded by the unified `@marlinjai/email-mcp` server (see
 `docs/plans/2026-02-16-email-mcp-plan.md`), which shipped the same triage goal
 through provider-native APIs instead of `nikolausm/imap-mcp-server`. Live on npm
-at v1.7.2.
+at v1.8.0 (published 2026-09-18).
 
 **Goal:** Set up an MCP-powered Claude Code skill that triages junk mail across Gmail, iCloud, and Outlook accounts — classifying, rescuing, sorting, and blocking spam domains.
 

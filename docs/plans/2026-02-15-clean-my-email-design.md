@@ -15,7 +15,7 @@ projects: [email-mcp]
 Superseded by the unified `@marlinjai/email-mcp` Model Context Protocol server
 (`docs/plans/2026-02-16-email-mcp-design.md` and its implementation plan), which
 shipped a provider-adapter architecture instead of the `nikolausm/imap-mcp-server`
-dependency this document proposed. The product is live on npm at v1.7.2 with 301
+dependency this document proposed. The product is live on npm at v1.8.0 (published 2026-09-18) with 334
 passing tests. Marked completed rather than archived because the underlying goal
 (multi-account triage across Gmail, iCloud and Outlook) is exactly what shipped,
 just built differently.

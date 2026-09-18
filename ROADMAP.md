@@ -22,15 +22,13 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and
       clears the Outlook cache entry, reporting what it could not do; the OAuth callback
       listener binds only the loopback addresses; saved attachments are owner-only (2026-09-18)
-- [ ] Release the credential hardening from pull request #15 to npm as 1.8.0. The release
-      pull request #16 (branch `release/1.8.0`) bumps the version, turns the changelog into the
-      1.8.0 section and updates `site/privacy.html` and the README to the 1.8.0 behavior
-      (encrypted `msal-cache.enc`, Google revocation on account removal, loopback-only sign-in
-      listener, owner-only attachments). Remaining: merge it (this deploys the site), push the
-      tag `v1.8.0` (this publishes to npm through `.github/workflows/publish.yml`), confirm
-      `npm view @marlinjai/email-mcp version` prints 1.8.0, then do one real Gmail sign-in, one
-      real Outlook sign-in and one remove-and-re-add on 1.8.0, since none of this has run
-      against a real provider yet (2026-09-18)
+- [ ] Verify 1.8.0 against the real providers. Released 2026-09-18: pull request #16 merged
+      (site with the updated privacy policy deployed), tag `v1.8.0` published to npm with a
+      provenance statement, registry `latest` is 1.8.0. Remaining: after Claude Code restarts
+      the server on 1.8.0, confirm `~/.email-mcp/msal-cache.json` became `msal-cache.enc` and
+      Outlook still works (the migration), then one real Gmail sign-in and one remove-and-re-add
+      (checks the loopback-only listener and the Google revocation), since none of the 1.8.0
+      changes has run against a real provider yet (2026-09-18)
 - [x] Marlin sent both Gmail replies ("Re: Anfrage zum Email MCP", "Re: email-mcp OAuth access")
       on 2026-09-06; the line saying they sat unsent was stale (2026-09-18)
 - [x] Real Outlook re-auth on 1.7.2 done by Marlin on 2026-09-18 (`marlinjp@hotmail.de`):

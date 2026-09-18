@@ -11,8 +11,8 @@ projects: [email-mcp]
 
 ## Reality update (2026-09-10)
 
-Shipped. `@marlinjai/email-mcp` is live on npm at v1.7.2, all four providers
-(Gmail, Outlook, iCloud, generic IMAP) built, 301 passing tests, `tsc --noEmit`
+Shipped. `@marlinjai/email-mcp` is live on npm at v1.8.0 (published 2026-09-18), all four providers
+(Gmail, Outlook, iCloud, generic IMAP) built, 334 passing tests, `tsc --noEmit`
 clean as of this session (11 pre-existing type errors fixed, see
 `backlog/intents/email-mcp-pre-existing-test-and-tsc-failures.md` in
 knowledge-base). Well past the founding task list; subsequent work is tracked on
