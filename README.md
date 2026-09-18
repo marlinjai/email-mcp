@@ -255,8 +255,9 @@ kept this cache as plain JSON in `~/.email-mcp/msal-cache.json`; 1.8.0 encrypts 
 deletes the plain file the first time it reads it, without signing you out. Going back
 to an older version afterwards means signing in to Outlook again.
 
-Attachments saved with `email_save_attachment` are written owner-only (`0600`), and
-folders email-mcp creates for them are `0700`. They are not encrypted.
+On macOS and Linux, attachments saved with `email_save_attachment` are written
+owner-only (`0600`), and folders email-mcp creates for them are `0700`. They are not
+encrypted.
 
 The OAuth sign-in callback started by `email-mcp-setup` listens on the loopback
 addresses only (`127.0.0.1`, and `::1` when available), so nothing else on your network
