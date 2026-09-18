@@ -191,8 +191,15 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
         const provider = await accountManager.getProvider(args.accountId);
         const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId);
 
-        fs.mkdirSync(path.dirname(absPath), { recursive: true });
-        fs.writeFileSync(absPath, Buffer.from(data));
+        // Attachments are private mail content: directories email-mcp creates
+        // are owner-only (0700), and the file is owner-only (0600) like the
+        // credential files. chmod after writing because the mode option only
+        // applies when a file is created, not when an existing one is replaced.
+        // An existing directory (e.g. a user-chosen EMAIL_MCP_DOWNLOADS_DIR)
+        // keeps the permissions its owner gave it.
+        fs.mkdirSync(path.dirname(absPath), { recursive: true, mode: 0o700 });
+        fs.writeFileSync(absPath, Buffer.from(data), { mode: 0o600 });
+        fs.chmodSync(absPath, 0o600);
 
         return jsonResult({
           path: absPath,

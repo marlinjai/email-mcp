@@ -95,14 +95,14 @@ export function registerAccountTools(server: McpServer, accountManager: AccountM
   // --- email_remove_account ---
   server.tool(
     'email_remove_account',
-    'Remove an email account',
+    'Remove an email account: deletes its stored credentials, revokes the Google grant for Gmail accounts, and removes Outlook tokens from the local token cache. The result reports whether provider-side revocation succeeded.',
     {
       accountId: z.string().describe('ID of the account to remove'),
     },
     async (args) => {
       try {
-        await accountManager.removeAccount(args.accountId);
-        return jsonResult({ success: true });
+        const result = await accountManager.removeAccount(args.accountId);
+        return jsonResult(result);
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }

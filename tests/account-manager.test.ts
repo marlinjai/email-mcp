@@ -44,7 +44,10 @@ vi.mock('../src/providers/imap/adapter.js', () => ({
   },
 }));
 
-vi.mock('../src/providers/gmail/auth.js', () => ({
+// Keep the real revokeGoogleGrant (its HTTP call is exercised against a
+// stubbed fetch below); only the OAuth client class is faked.
+vi.mock('../src/providers/gmail/auth.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/providers/gmail/auth.js')>()),
   GmailAuth: class {
     refreshAccessToken = vi.fn().mockResolvedValue({
       access_token: 'new-at',
@@ -54,8 +57,11 @@ vi.mock('../src/providers/gmail/auth.js', () => ({
   },
 }));
 
+const mockRemoveCachedAccount = vi.fn();
+
 vi.mock('../src/providers/outlook/auth.js', () => ({
   OutlookAuth: class {
+    removeCachedAccount = mockRemoveCachedAccount;
     refreshToken = vi.fn().mockResolvedValue({
       accessToken: 'new-at',
       expiresOn: new Date(Date.now() + 3600000),
@@ -93,13 +99,20 @@ describe('AccountManager', () => {
     },
   };
 
+  let fetchMock: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
+    // Never let a test reach Google's real revocation endpoint.
+    fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockRemoveCachedAccount.mockReset();
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'email-mcp-am-'));
     store = new CredentialStore(testDir);
     manager = new AccountManager(store);
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -143,6 +156,121 @@ describe('AccountManager', () => {
 
     const accounts = await manager.listAccounts();
     expect(accounts).toHaveLength(0);
+  });
+
+  describe('removeAccount provider cleanup', () => {
+    const outlookCreds: AccountCredentials = {
+      id: 'outlook-1',
+      name: 'My Outlook',
+      provider: ProviderType.Outlook,
+      email: 'Someone@Outlook.com',
+      oauth: {
+        access_token: 'at-o',
+        refresh_token: '',
+        expiry: new Date(Date.now() + 3600000).toISOString(),
+        msal_home_account_id: 'home-1',
+      },
+    };
+
+    it('revokes the Google grant with the refresh token and reports success', async () => {
+      await store.save(gmailCreds);
+      const result = await manager.removeAccount('gmail-1');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://oauth2.googleapis.com/revoke');
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+      expect(init.body).toBe('token=rt-456');
+
+      expect(result.success).toBe(true);
+      expect(result.provider).toBe('gmail');
+      expect(result.revocation.status).toBe('revoked');
+      expect(await store.get('gmail-1')).toBeNull();
+    });
+
+    it('falls back to the access token when no refresh token is stored', async () => {
+      await store.save({ ...gmailCreds, oauth: { ...gmailCreds.oauth!, refresh_token: '' } });
+      await manager.removeAccount('gmail-1');
+      expect(fetchMock.mock.calls[0][1].body).toBe('token=at-123');
+    });
+
+    it('still removes the account locally and reports the failure when Google refuses', async () => {
+      fetchMock.mockResolvedValue(
+        new Response(JSON.stringify({ error: 'invalid_token', error_description: 'Token expired or revoked' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      await store.save(gmailCreds);
+      const result = await manager.removeAccount('gmail-1');
+
+      expect(result.success).toBe(true);
+      expect(result.revocation.status).toBe('failed');
+      expect(result.revocation.detail).toContain('HTTP 400');
+      expect(result.revocation.detail).toContain('invalid_token');
+      expect(result.revocation.detail).toContain('myaccount.google.com/permissions');
+      expect(result.revocation.detail).not.toContain('rt-456');
+      expect(await store.get('gmail-1')).toBeNull();
+    });
+
+    it('still removes the account locally and reports the failure when the network is down', async () => {
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+      await store.save(gmailCreds);
+      const result = await manager.removeAccount('gmail-1');
+
+      expect(result.revocation.status).toBe('failed');
+      expect(result.revocation.detail).toContain('fetch failed');
+      expect(await store.get('gmail-1')).toBeNull();
+    });
+
+    it('removes Outlook tokens from the MSAL cache and explains that Microsoft has no revoke endpoint', async () => {
+      mockRemoveCachedAccount.mockResolvedValue(true);
+      await store.save(outlookCreds);
+      const result = await manager.removeAccount('outlook-1');
+
+      expect(mockRemoveCachedAccount).toHaveBeenCalledWith({
+        homeAccountId: 'home-1',
+        username: 'Someone@Outlook.com',
+      });
+      expect(result.tokenCache?.status).toBe('removed');
+      expect(result.revocation.status).toBe('local_only');
+      expect(result.revocation.detail).toContain('account.live.com/consent/Manage');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await store.get('outlook-1')).toBeNull();
+    });
+
+    it('reports an Outlook cache that held no tokens for the account', async () => {
+      mockRemoveCachedAccount.mockResolvedValue(false);
+      await store.save(outlookCreds);
+      const result = await manager.removeAccount('outlook-1');
+      expect(result.tokenCache?.status).toBe('not_found');
+    });
+
+    it('still removes an Outlook account locally when the MSAL cache cannot be read', async () => {
+      mockRemoveCachedAccount.mockRejectedValue(new Error('could not be decrypted'));
+      await store.save(outlookCreds);
+      const result = await manager.removeAccount('outlook-1');
+
+      expect(result.success).toBe(true);
+      expect(result.tokenCache?.status).toBe('failed');
+      expect(result.tokenCache?.detail).toContain('could not be decrypted');
+      expect(await store.get('outlook-1')).toBeNull();
+    });
+
+    it('reports nothing to revoke for password accounts and makes no network call', async () => {
+      await store.save(icloudCreds);
+      const result = await manager.removeAccount('icloud-1');
+
+      expect(result.revocation.status).toBe('not_applicable');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await store.get('icloud-1')).toBeNull();
+    });
+
+    it('rejects an unknown account id without touching the network', async () => {
+      await expect(manager.removeAccount('nonexistent')).rejects.toThrow('Account nonexistent not found');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   it('tests account connection', async () => {

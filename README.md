@@ -123,7 +123,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 |------|-------------|
 | `email_list_accounts` | List all configured accounts with connection status |
 | `email_add_account` | Add a new IMAP or iCloud account (Gmail/Outlook require setup wizard) |
-| `email_remove_account` | Remove an account and its stored credentials |
+| `email_remove_account` | Remove an account and its stored credentials; revokes the Google grant for Gmail, removes Outlook tokens from the local token cache, and reports the outcome |
 | `email_test_account` | Test connection to an account |
 
 ### Reading & Searching (6)

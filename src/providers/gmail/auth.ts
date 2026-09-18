@@ -36,6 +36,57 @@ function resolveScopeMode(explicit?: GmailScopeMode): GmailScopeMode {
     : 'full';
 }
 
+export const GOOGLE_REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
+const GOOGLE_PERMISSIONS_URL = 'https://myaccount.google.com/permissions';
+const REVOKE_TIMEOUT_MS = 10_000;
+
+/**
+ * Revokes a Google OAuth grant through Google's token revocation endpoint.
+ * Revoking the refresh token (or an access token that has one) cancels the
+ * whole grant, so email-mcp disappears from the user's Google Account
+ * third-party access list. Never throws: the outcome is returned so the caller
+ * can report it. The token itself never appears in the returned detail.
+ */
+export async function revokeGoogleGrant(token: string): Promise<{ ok: boolean; detail: string }> {
+  if (!token) {
+    return {
+      ok: false,
+      detail: `No Google token was stored for this account, so nothing could be revoked. Remove email-mcp manually at ${GOOGLE_PERMISSIONS_URL}.`,
+    };
+  }
+  try {
+    const res = await fetch(GOOGLE_REVOKE_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
+    });
+    if (res.ok) {
+      return { ok: true, detail: 'Google revoked the grant: email-mcp no longer has access to this Gmail account.' };
+    }
+    let reason = '';
+    try {
+      const body = (await res.json()) as { error?: string; error_description?: string };
+      reason = [body.error, body.error_description].filter(Boolean).join(': ');
+    } catch {
+      // Body was not JSON; the status code alone is reported.
+    }
+    return {
+      ok: false,
+      detail:
+        `Google refused the revocation (HTTP ${res.status}${reason ? `, ${reason}` : ''}). ` +
+        `The grant may already be revoked or expired. Check and remove email-mcp manually at ${GOOGLE_PERMISSIONS_URL}.`,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      detail:
+        `Could not reach Google's revocation endpoint (${err?.message ?? String(err)}). ` +
+        `Remove email-mcp manually at ${GOOGLE_PERMISSIONS_URL}.`,
+    };
+  }
+}
+
 export class GmailAuth {
   private clientId: string;
   private clientSecret: string;

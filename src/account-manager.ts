@@ -1,6 +1,6 @@
 import { CredentialStore } from './auth/credential-store.js';
 import { GmailAdapter } from './providers/gmail/adapter.js';
-import { GmailAuth } from './providers/gmail/auth.js';
+import { GmailAuth, revokeGoogleGrant } from './providers/gmail/auth.js';
 import { OutlookAdapter } from './providers/outlook/adapter.js';
 import { OutlookAuth } from './providers/outlook/auth.js';
 import { ICloudAdapter } from './providers/icloud/adapter.js';
@@ -24,6 +24,27 @@ function createProvider(provider: ProviderTypeValue): EmailProvider {
       throw new Error(`Unknown provider: ${provider}`);
   }
 }
+
+/**
+ * What happened at the provider when an account was removed:
+ * - revoked: the provider confirmed the grant is cancelled (Gmail)
+ * - failed: revocation was attempted and did not succeed (see detail)
+ * - local_only: the provider offers no revocation API for this grant (Outlook)
+ * - not_applicable: password accounts, nothing was granted via OAuth
+ */
+export type RevocationStatus = 'revoked' | 'failed' | 'local_only' | 'not_applicable';
+
+export interface AccountRemovalResult {
+  success: true;
+  accountId: string;
+  provider: ProviderTypeValue;
+  email: string;
+  revocation: { status: RevocationStatus; detail: string };
+  /** Outlook only: removal of the account's tokens from the local MSAL cache. */
+  tokenCache?: { status: 'removed' | 'not_found' | 'failed'; detail: string };
+}
+
+const MICROSOFT_CONSENT_URL = 'https://account.live.com/consent/Manage';
 
 export class AccountManager {
   private store: CredentialStore;
@@ -91,9 +112,70 @@ export class AccountManager {
     await this.connectAccount(creds.id);
   }
 
-  async removeAccount(accountId: string): Promise<void> {
+  /**
+   * Removes an account locally, then cleans up at the provider as far as the
+   * provider allows. Local removal always happens first and never depends on
+   * the network; a failed provider step is reported in the result, not thrown.
+   */
+  async removeAccount(accountId: string): Promise<AccountRemovalResult> {
+    const creds = await this.store.get(accountId);
+    if (!creds) throw new Error(`Account ${accountId} not found`);
+
     await this.disconnectAccount(accountId);
     await this.store.remove(accountId);
+
+    const result: AccountRemovalResult = {
+      success: true,
+      accountId,
+      provider: creds.provider,
+      email: creds.email,
+      revocation: { status: 'not_applicable', detail: '' },
+    };
+
+    if (creds.provider === ProviderType.Gmail) {
+      const token = creds.oauth?.refresh_token || creds.oauth?.access_token || '';
+      const { ok, detail } = await revokeGoogleGrant(token);
+      result.revocation = { status: ok ? 'revoked' : 'failed', detail };
+    } else if (creds.provider === ProviderType.Outlook) {
+      result.tokenCache = await this.removeFromMsalCache(creds);
+      result.revocation = {
+        status: 'local_only',
+        detail:
+          'Microsoft offers no endpoint to revoke a refresh token for a personal Microsoft account, ' +
+          'so the grant still exists at Microsoft until it expires. To cancel it now, remove email-mcp at ' +
+          `${MICROSOFT_CONSENT_URL}.`,
+      };
+    } else {
+      result.revocation = {
+        status: 'not_applicable',
+        detail:
+          'This account used a password, not an OAuth grant, so there is nothing to revoke. ' +
+          'The password itself stays valid at your provider; if it was an app-specific password ' +
+          '(for example from Apple), delete it there if you no longer need it.',
+      };
+    }
+
+    return result;
+  }
+
+  private async removeFromMsalCache(
+    creds: AccountCredentials,
+  ): Promise<NonNullable<AccountRemovalResult['tokenCache']>> {
+    try {
+      const outlookAuth = new OutlookAuth(OUTLOOK_CLIENT_ID);
+      const removed = await outlookAuth.removeCachedAccount({
+        homeAccountId: creds.oauth?.msal_home_account_id,
+        username: creds.email,
+      });
+      return removed
+        ? { status: 'removed', detail: "The account's refresh and access tokens were removed from the local Outlook token cache." }
+        : { status: 'not_found', detail: 'The local Outlook token cache held no tokens for this account.' };
+    } catch (err: any) {
+      return {
+        status: 'failed',
+        detail: `The account's tokens could not be removed from the local Outlook token cache: ${err?.message ?? String(err)}`,
+      };
+    }
   }
 
   async disconnectAccount(accountId: string): Promise<void> {
