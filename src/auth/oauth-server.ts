@@ -88,6 +88,9 @@ export class OAuthCallbackServer {
       server.once('error', onError);
       server.listen(port, host, () => {
         server.off('error', onError);
+        // A server error after listening must fail the sign-in visibly,
+        // never go unhandled and crash the wizard.
+        server.on('error', (err) => this.rejectCode?.(err));
         resolve(server);
       });
     });

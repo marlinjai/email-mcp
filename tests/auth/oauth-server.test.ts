@@ -78,6 +78,16 @@ describe('OAuthCallbackServer', () => {
     await rejection;
   });
 
+  it('turns a server error after listening into a rejected sign-in, not a crash', async () => {
+    server = new OAuthCallbackServer();
+    await server.start();
+    const code = server.waitForCode('s');
+    const rejection = expect(code).rejects.toThrow('boom');
+
+    (server as any).servers[0].emit('error', new Error('boom'));
+    await rejection;
+  });
+
   it('closes every listener on shutdown', async () => {
     server = new OAuthCallbackServer();
     const port = await server.start();
