@@ -11,9 +11,9 @@ A unified MCP server for email access across Gmail, Outlook, iCloud, and generic
 
 ## Reality update (2026-09-10)
 
-Shipped. `@marlinjai/email-mcp` is live on npm at v1.7.2 with the provider-adapter
+Shipped. `@marlinjai/email-mcp` is live on npm at v1.8.0 (published 2026-09-18) with the provider-adapter
 architecture this document specifies (Gmail REST, Microsoft Graph, IMAP for iCloud
-and generic providers), 301 passing tests, and `tsc --noEmit` now clean.
+and generic providers), 334 passing tests, and `tsc --noEmit` now clean.
 
 ## Architecture
 
