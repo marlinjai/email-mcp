@@ -17,18 +17,21 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       demo video must show the OAuth consent screen and the app's features, which needs Marlin to
       re-record it. After both, Marlin replies on the Google Trust and Safety email thread.
       GitHub issue #1 tracks the "unverified app" blocker this closes (2026-09-18)
-- [ ] Encrypt the Outlook token cache `~/.email-mcp/msal-cache.json` (it holds the Outlook refresh
-      token as plain JSON with owner-only file permissions, while credentials.enc is AES-256-GCM),
-      e.g. by routing the MSAL cache plugin through the same encryption as the credential store;
-      the privacy policy currently discloses it as unencrypted and needs updating once done (2026-09-18)
-- [ ] `email_remove_account` only deletes the local credential: make it also revoke the grant
-      (Google's token revocation endpoint) and drop the account from the MSAL cache, then update
-      the privacy policy's "Revoking access" section, which currently says it does not (2026-09-18)
-- [ ] The OAuth callback listener (`OAuthCallbackServer.start`, src/auth/oauth-server.ts) calls
-      `listen(0)` with no host, so it binds all network interfaces during sign-in; bind it to the
-      loopback interface only (check `localhost` resolving to ::1 vs 127.0.0.1) (2026-09-18)
-- [ ] Marlin: read the two Gmail Drafts replies (subjects "Re: Anfrage zum Email MCP" and "Re:
-      email-mcp OAuth access") and send them; they have sat unsent since 2026-09-06 (2026-09-10)
+- [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
+      (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
+      migrated without signing anyone out); `email_remove_account` revokes the Google grant and
+      clears the Outlook cache entry, reporting what it could not do; the OAuth callback
+      listener binds only the loopback addresses; saved attachments are owner-only (2026-09-18)
+- [ ] Release the credential hardening from pull request #15 to npm and update
+      `site/privacy.html` in the same step, so the published policy never describes behavior the
+      published package lacks. Sentences to change: the Outlook cache is now encrypted and named
+      `msal-cache.enc`; account removal now revokes the Google grant and clears the Outlook
+      cache (Microsoft consumer grants still need account.live.com/consent/Manage); saved
+      attachments are now owner-only; optionally, the sign-in listener is loopback-only. Then do
+      one real sign-in with Gmail and with Outlook and one remove-and-re-add on the released
+      version, since none of this has run against a real provider yet (2026-09-18)
+- [x] Marlin sent both Gmail replies ("Re: Anfrage zum Email MCP", "Re: email-mcp OAuth access")
+      on 2026-09-06; the line saying they sat unsent was stale (2026-09-18)
 - [ ] Marlin: complete one real Outlook re-auth on the current package (the `marlinjp@hotmail.de`
       account, currently `connected: false`) to confirm the OAuth `state` parameter added in
       v1.7.1 is echoed back correctly by Microsoft's consumer authority; only unit-tested against
