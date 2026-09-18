@@ -23,7 +23,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       clears the Outlook cache entry, reporting what it could not do; the OAuth callback
       listener binds only the loopback addresses; saved attachments are owner-only (2026-09-18)
 - [ ] Release the credential hardening from pull request #15 to npm as 1.8.0. The release
-      pull request (branch `release/1.8.0`) bumps the version, turns the changelog into the
+      pull request #16 (branch `release/1.8.0`) bumps the version, turns the changelog into the
       1.8.0 section and updates `site/privacy.html` and the README to the 1.8.0 behavior
       (encrypted `msal-cache.enc`, Google revocation on account removal, loopback-only sign-in
       listener, owner-only attachments). Remaining: merge it (this deploys the site), push the
