@@ -60,6 +60,16 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       emailId: z.string(),
       body: BodySchema,
       replyAll: z.boolean().optional(),
+      to: z
+        .array(ContactSchema)
+        .optional()
+        .describe('Replace the default To (the original sender). Use it when the original was sent by you, so the reply goes to the real correspondents instead of back to yourself'),
+      cc: z.array(ContactSchema).optional().describe('Cc recipients. Replaces any Cc carried over by replyAll'),
+      bcc: z.array(ContactSchema).optional(),
+      additionalRecipients: z
+        .array(ContactSchema)
+        .optional()
+        .describe('Extra To recipients added to the default or given To (deduplicated by address)'),
       attachments: AttachmentsSchema,
     },
     async (args) => {
@@ -85,13 +95,28 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           cc = original.cc;
         }
 
+        if (args.to?.length) to = args.to;
+        if (args.additionalRecipients?.length) {
+          const seen = new Set(to.map((c) => c.email.toLowerCase()));
+          for (const r of args.additionalRecipients) {
+            if (!seen.has(r.email.toLowerCase())) {
+              to = [...to, r];
+              seen.add(r.email.toLowerCase());
+            }
+          }
+        }
+        if (args.cc !== undefined) cc = args.cc;
+
         const params: SendEmailParams = {
           to,
           cc,
+          bcc: args.bcc,
           subject,
           body: args.body,
           inReplyTo: messageId,
           references: [messageId],
+          threadId: original.threadId,
+          replyToGraphId: original.id,
           attachments: resolveAttachments(args.attachments),
         };
 
@@ -106,13 +131,19 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   // --- email_forward ---
   server.tool(
     'email_forward',
-    'Forward an email to new recipients',
+    'Forward an email to new recipients. The original message\'s attachments are included by default',
     {
       accountId: z.string(),
       emailId: z.string(),
       to: z.array(ContactSchema),
+      cc: z.array(ContactSchema).optional(),
+      bcc: z.array(ContactSchema).optional(),
       body: BodySchema.optional(),
-      attachments: AttachmentsSchema,
+      attachments: AttachmentsSchema.describe('Additional files to attach, on top of the original message\'s attachments'),
+      includeOriginalAttachments: z
+        .boolean()
+        .optional()
+        .describe('Forward the original message\'s attachments too (default true)'),
     },
     async (args) => {
       try {
@@ -160,11 +191,21 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           ].join('');
         }
 
+        const attachments = resolveAttachments(args.attachments) ?? [];
+        if ((args.includeOriginalAttachments ?? true) && original.attachments?.length) {
+          for (const att of original.attachments) {
+            const fetched = await provider.getAttachment(original.id, att.id);
+            attachments.unshift({ filename: att.filename, content: fetched.data, contentType: att.contentType });
+          }
+        }
+
         const params: SendEmailParams = {
           to: args.to,
+          cc: args.cc,
+          bcc: args.bcc,
           subject,
           body: { text: forwardedText, html: forwardedHtml },
-          attachments: resolveAttachments(args.attachments),
+          attachments: attachments.length ? attachments : undefined,
         };
 
         const result = await provider.sendEmail(params);
@@ -178,13 +219,17 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   // --- email_draft_create ---
   server.tool(
     'email_draft_create',
-    'Create a new email draft',
+    'Create a new email draft. Pass inReplyToEmailId to save it as a reply in that message\'s thread',
     {
       accountId: z.string(),
       to: z.array(ContactSchema),
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema,
+      inReplyToEmailId: z
+        .string()
+        .optional()
+        .describe('Id of the email this draft replies to. The draft joins that thread (Gmail threadId, Outlook createReply, In-Reply-To/References headers elsewhere)'),
     },
     async (args) => {
       try {
@@ -195,6 +240,14 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           body: args.body,
           attachments: resolveAttachments(args.attachments),
         };
+        if (args.inReplyToEmailId) {
+          const original = await provider.getEmail(args.inReplyToEmailId);
+          const messageId = original.headers?.['message-id'] ?? original.id;
+          params.inReplyTo = messageId;
+          params.references = [messageId];
+          params.threadId = original.threadId;
+          params.replyToGraphId = original.id;
+        }
         const result = await provider.createDraft(params);
         return jsonResult(result);
       } catch (error: any) {

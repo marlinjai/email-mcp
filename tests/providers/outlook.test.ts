@@ -426,6 +426,41 @@ describe('OutlookAdapter', () => {
   });
 
   describe('sendEmail', () => {
+    it('replies in-thread through createReply, then sends the draft', async () => {
+      const createReply = createMockGraphRequest({ id: 'reply-draft-1' });
+      mockApiRequests.set('/me/messages/orig-1/createReply', createReply);
+      const patchReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-1', patchReq);
+      const sendReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-1/send', sendReq);
+      const sendMail = createMockGraphRequest();
+      mockApiRequests.set('/me/sendMail', sendMail);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.sendEmail({
+        to: [{ email: 'client@test.com' }], subject: 'Re: x', body: { text: 'Thanks' },
+        inReplyTo: '<m@x>', replyToGraphId: 'orig-1',
+      });
+
+      expect(createReply.post).toHaveBeenCalled();
+      expect(patchReq.patch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: { contentType: 'text', content: 'Thanks' },
+          toRecipients: [{ emailAddress: { name: undefined, address: 'client@test.com' } }],
+        }),
+      );
+      expect(sendReq.post).toHaveBeenCalled();
+      expect(sendMail.post).not.toHaveBeenCalled();
+      expect(result.id).toBe('reply-draft-1');
+    });
+
     it('calls POST /me/sendMail with correct payload', async () => {
       const mockSendRequest = createMockGraphRequest();
       mockApiRequests.set('/me/sendMail', mockSendRequest);
@@ -516,6 +551,30 @@ describe('OutlookAdapter', () => {
   });
 
   describe('createDraft', () => {
+    it('creates a threaded reply draft through createReply and does not send it', async () => {
+      const createReply = createMockGraphRequest({ id: 'reply-draft-2' });
+      mockApiRequests.set('/me/messages/orig-2/createReply', createReply);
+      mockApiRequests.set('/me/messages/reply-draft-2', createMockGraphRequest({}));
+      const sendReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-2/send', sendReq);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.createDraft({
+        to: [{ email: 'client@test.com' }], subject: 'Re: x', body: { text: 'Draft' }, replyToGraphId: 'orig-2',
+      });
+
+      expect(createReply.post).toHaveBeenCalled();
+      expect(sendReq.post).not.toHaveBeenCalled();
+      expect(result.id).toBe('reply-draft-2');
+    });
+
     it('calls POST /me/messages to create a draft', async () => {
       const mockDraftRequest = createMockGraphRequest({ id: 'draft-123' });
       mockApiRequests.set('/me/messages', mockDraftRequest);

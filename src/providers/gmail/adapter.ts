@@ -206,7 +206,7 @@ export class GmailAdapter implements EmailProvider {
 
     const res = await gmail.users.messages.send({
       userId: 'me',
-      requestBody: { raw },
+      requestBody: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
     });
 
     return {
@@ -222,7 +222,7 @@ export class GmailAdapter implements EmailProvider {
     const res = await gmail.users.drafts.create({
       userId: 'me',
       requestBody: {
-        message: { raw },
+        message: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       },
     });
 
@@ -237,7 +237,7 @@ export class GmailAdapter implements EmailProvider {
       userId: 'me',
       id: draftId,
       requestBody: {
-        message: { raw },
+        message: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       },
     });
 

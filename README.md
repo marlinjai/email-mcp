@@ -162,9 +162,9 @@ A path outside that folder is refused, as is a symbolic link that leads out of i
 | Tool | Description |
 |------|-------------|
 | `email_send` | Compose and send a new email (to, cc, bcc, subject, body, attachments) |
-| `email_reply` | Reply to an email (supports reply-all, preserves threading) |
-| `email_forward` | Forward an email to new recipients |
-| `email_draft_create` | Save a draft without sending (attachments supported) |
+| `email_reply` | Reply to an email in its thread (reply-all; optional `to`/`cc`/`bcc` overrides and `additionalRecipients`, e.g. when replying to your own sent message) |
+| `email_forward` | Forward an email to new recipients (cc/bcc; includes the original attachments unless `includeOriginalAttachments: false`) |
+| `email_draft_create` | Save a draft without sending (attachments supported; `inReplyToEmailId` saves it as a reply inside that thread) |
 | `email_draft_update` | Update an existing draft in place. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended — the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 

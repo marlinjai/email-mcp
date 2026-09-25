@@ -511,6 +511,15 @@ describe('GmailAdapter', () => {
   });
 
   describe('sendEmail', () => {
+    it('joins the Gmail thread when threadId is given', async () => {
+      await adapter.sendEmail({
+        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
+      });
+      expect(mockMessagesSend).toHaveBeenCalledWith(
+        expect.objectContaining({ requestBody: expect.objectContaining({ threadId: 'thread-9' }) }),
+      );
+    });
+
     it('sends email via Gmail API', async () => {
       const result = await adapter.sendEmail({
         to: [{ name: 'Bob', email: 'bob@example.com' }],
@@ -530,6 +539,13 @@ describe('GmailAdapter', () => {
   });
 
   describe('createDraft', () => {
+    it('puts a reply draft in the Gmail thread when threadId is given', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
+      });
+      expect(mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.threadId).toBe('thread-9');
+    });
+
     it('creates draft via Gmail API', async () => {
       const result = await adapter.createDraft({
         to: [{ email: 'bob@example.com' }],

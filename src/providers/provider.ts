@@ -23,6 +23,13 @@ export interface SendEmailParams {
   attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
   inReplyTo?: string;
   references?: string[];
+  /** Gmail thread to join. Header-based threading alone does not place a
+   *  message in a Gmail thread; the API needs the threadId as well. */
+  threadId?: string;
+  /** Outlook: Graph item id of the message being replied to. Graph threads a
+   *  reply only through createReply, which needs this id (not the RFC
+   *  Message-ID in inReplyTo). Other providers ignore it. */
+  replyToGraphId?: string;
 }
 
 export interface EmailProvider {

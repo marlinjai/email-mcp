@@ -511,4 +511,104 @@ describe('Sending tools', () => {
       expect(mockProvider.updateDraft).toHaveBeenCalledWith('draft-1', expect.objectContaining({ attachments: [] }), undefined);
     });
   });
+
+  describe('reply recipients and threading', () => {
+    const original = {
+      id: 'graph-msg-1',
+      threadId: 'gmail-thread-1',
+      from: { email: 'me@example.com', name: 'Me' },
+      to: [{ email: 'client@example.com', name: 'Client' }],
+      cc: [{ email: 'carol@example.com' }],
+    };
+
+    beforeEach(() => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail(original));
+    });
+
+    it('email_reply passes threadId and the provider item id for threading', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' } });
+      expect(mockProvider.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: 'gmail-thread-1', replyToGraphId: 'graph-msg-1', inReplyTo: '<msg-1@example.com>' }),
+      );
+    });
+
+    it('email_reply `to` replaces the default recipient (a reply to your own sent mail)', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' }, to: [{ email: 'client@example.com' }],
+      });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to).toEqual([{ email: 'client@example.com' }]);
+    });
+
+    it('email_reply additionalRecipients are appended without duplicates', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' },
+        additionalRecipients: [{ email: 'ME@example.com' }, { email: 'dave@example.com' }],
+      });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to.map((c: any) => c.email)).toEqual([
+        'me@example.com', 'dave@example.com',
+      ]);
+    });
+
+    it('email_reply cc overrides the cc carried over by replyAll, and bcc is passed', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' }, replyAll: true,
+        cc: [{ email: 'erin@example.com' }], bcc: [{ email: 'frank@example.com' }],
+      });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.cc).toEqual([{ email: 'erin@example.com' }]);
+      expect(params.bcc).toEqual([{ email: 'frank@example.com' }]);
+    });
+
+    it('email_draft_create with inReplyToEmailId creates a threaded reply draft', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: 'graph-msg-1',
+      });
+      expect(mockProvider.createDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inReplyTo: '<msg-1@example.com>', references: ['<msg-1@example.com>'],
+          threadId: 'gmail-thread-1', replyToGraphId: 'graph-msg-1',
+        }),
+      );
+    });
+
+    it('email_draft_create without inReplyToEmailId stays a standalone draft', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'New', body: { text: 'B' },
+      });
+      const params = (mockProvider.createDraft as any).mock.calls[0][0];
+      expect(params.inReplyTo).toBeUndefined();
+      expect(params.replyToGraphId).toBeUndefined();
+      expect(mockProvider.getEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('forward keeps the original attachments', () => {
+    beforeEach(() => {
+      (mockProvider.getEmail as any).mockResolvedValue(
+        makeEmail({ attachments: [{ id: 'att-1', filename: 'spec.pdf', contentType: 'application/pdf', size: 3 }] as any }),
+      );
+      (mockProvider.getAttachment as any).mockResolvedValue({ data: Buffer.from('pdf'), meta: {} });
+    });
+
+    it('includes them by default, ahead of added files', async () => {
+      await callTool(server, 'email_forward', {
+        accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'dave@example.com' }],
+        cc: [{ email: 'erin@example.com' }],
+        attachments: [{ content: Buffer.from('x').toString('base64'), filename: 'note.txt' }],
+      });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.attachments.map((a: any) => a.filename)).toEqual(['spec.pdf', 'note.txt']);
+      expect(params.cc).toEqual([{ email: 'erin@example.com' }]);
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1');
+    });
+
+    it('can leave them out', async () => {
+      await callTool(server, 'email_forward', {
+        accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'dave@example.com' }], includeOriginalAttachments: false,
+      });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].attachments).toBeUndefined();
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+    });
+  });
 });

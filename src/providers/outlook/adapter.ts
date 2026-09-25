@@ -244,8 +244,40 @@ export class OutlookAdapter implements EmailProvider {
     };
   }
 
+  /**
+   * Graph only threads a reply (conversationId, subject, quoted history)
+   * through the createReply flow: POST /me/messages and /me/sendMail always
+   * start a new conversation whatever In-Reply-To says. Build the reply draft,
+   * overlay our body, recipients and attachments, and return its id. Note the
+   * body replaces Graph's pre-filled quoted history.
+   */
+  private async createReplyDraft(params: SendEmailParams, replyToId: string): Promise<string> {
+    const client = this.ensureClient();
+    const draft = await client.api(`/me/messages/${encodeURIComponent(replyToId)}/createReply`).post({});
+    const toGraphRecipient = (c: { name?: string; email: string }) => ({
+      emailAddress: { name: c.name, address: c.email },
+    });
+    const patch: any = {
+      body: { contentType: params.body.html ? 'html' : 'text', content: params.body.html || params.body.text || '' },
+    };
+    // Keep the recipients Graph pre-filled (the original sender) unless given.
+    if (params.to?.length) patch.toRecipients = params.to.map(toGraphRecipient);
+    if (params.cc?.length) patch.ccRecipients = params.cc.map(toGraphRecipient);
+    if (params.bcc?.length) patch.bccRecipients = params.bcc.map(toGraphRecipient);
+    await client.api(`/me/messages/${encodeURIComponent(draft.id)}`).patch(patch);
+    for (const att of params.attachments ?? []) {
+      await client.api(`/me/messages/${encodeURIComponent(draft.id)}/attachments`).post(toGraphAttachment(att));
+    }
+    return draft.id;
+  }
+
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     const client = this.ensureClient();
+    if (params.replyToGraphId) {
+      const draftId = await this.createReplyDraft(params, params.replyToGraphId);
+      await client.api(`/me/messages/${encodeURIComponent(draftId)}/send`).post({});
+      return { id: draftId };
+    }
     assertOutlookAttachmentSizes(params.attachments, true);
     const message = this.buildGraphMessage(params);
 
@@ -261,6 +293,9 @@ export class OutlookAdapter implements EmailProvider {
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
+    if (params.replyToGraphId) {
+      return { id: await this.createReplyDraft(params, params.replyToGraphId) };
+    }
     assertOutlookAttachmentSizes(params.attachments, true);
     const message = this.buildGraphMessage(params);
     if (params.attachments?.length) {
