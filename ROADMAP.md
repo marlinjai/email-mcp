@@ -9,12 +9,14 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
 
 ## Leftovers (clear, do not carry)
 
-- [ ] Outgoing attachments: `email_send`, `email_draft_create`, `email_draft_update`, `email_reply`
-      and `email_forward` accept no files, so an invoice PDF cannot be sent or drafted through the MCP
-      (hit 2026-09-25 drafting Scheunerei Rechnung Nr. 59; fell back to the `gws` CLI). Attachments
-      exist only on the read side (`email_get_attachment`, `email_save_attachment`). Add an
-      `attachments` input (local path or base64 plus filename and MIME type) across Gmail, Outlook and
-      IMAP/SMTP, with a size cap and a live test per provider (2026-09-25)
+- [ ] Outgoing attachments: the five MCP tools (`email_send`, `email_draft_create`,
+      `email_draft_update`, `email_reply`, and `email_forward`) expose no `attachments` input, so an
+      invoice PDF cannot be sent or drafted through the MCP (hit 2026-09-25 drafting Scheunerei
+      Rechnung Nr. 59, fell back to the `gws` CLI). Provider support is partial: Outlook and
+      IMAP/SMTP `email_send` already consume `SendEmailParams.attachments`, while Gmail MIME
+      construction and all draft paths discard them. Expose an `attachments` input (local path or
+      base64 plus filename and MIME type), complete the Gmail and draft-provider paths, add a size
+      cap, and run a live test per provider (2026-09-25)
 - [ ] Google OAuth (Open Authorization) brand verification for the Gmail integration is submitted;
       the data-access review for the restricted `gmail.modify` and `gmail.settings.basic` scopes
       is blocked. On 2026-09-18 Google named two blockers: (1) the privacy policy did not describe
