@@ -139,12 +139,14 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 
 ### Sending & Drafts (6)
 
+`email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an optional `attachments` list. Each entry is either `{ path }` (an absolute path to a local file, read by the server) or `{ content, filename }` (base64), with an optional `contentType` (inferred from the extension otherwise). The total is capped at 25 MB.
+
 | Tool | Description |
 |------|-------------|
-| `email_send` | Compose and send a new email (to, cc, bcc, subject, body) |
-| `email_reply` | Reply to an email (supports reply-all, preserves threading) |
-| `email_forward` | Forward an email to new recipients |
-| `email_draft_create` | Save a draft without sending |
+| `email_send` | Compose and send a new email (to, cc, bcc, subject, body, attachments) |
+| `email_reply` | Reply to an email in its thread (reply-all; optional `to`/`cc`/`bcc` overrides and `additionalRecipients`, e.g. when replying to your own sent message) |
+| `email_forward` | Forward an email to new recipients (cc/bcc; includes the original attachments unless `includeOriginalAttachments: false`) |
+| `email_draft_create` | Save a draft without sending (attachments supported; `inReplyToEmailId` saves it as a reply inside that thread) |
 | `email_draft_update` | Update an existing draft in place. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended — the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 
@@ -182,6 +184,51 @@ All batch tools accept a `sourceFolder` parameter for IMAP/iCloud and include a 
 | `email_delete_block_rule` | Delete a standing block rule — use to undo a rule that turned out too broad |
 
 Gmail and Outlook only for the rule tools; `email_report_spam`/`email_batch_report_spam` work on every provider (iCloud/IMAP fall back to a best-effort move into the account's Junk-typed folder, with no vendor ML training signal since generic IMAP has none to train).
+
+## Headless fetch (scripts and schedulers)
+
+`email-mcp-fetch` reads mail without starting the MCP server, for cron jobs, schedulers and scripts in other languages. It uses the same credential store as the server, so run it as the user who set the accounts up (or set `EMAIL_MCP_KEY`). It prints JSON on stdout and exits non-zero with the error on stderr.
+
+```bash
+# Messages since a date (add --with-attachments for attachment metadata)
+email-mcp-fetch --account <id> --since 2026-09-01T00:00:00Z --folder inbox --limit 25
+
+# Save one attachment to a file
+email-mcp-fetch --account <id> --download <emailId> <attachmentId> ./file.pdf
+```
+
+List mode prints `[{ id, threadId, from, subject, date, preview, attachments }]`; download mode prints `{ saved, filename, contentType, size }`.
+
+## Unanswered-inbound digest
+
+`email-mcp-digest` scans every configured account for threads where someone else wrote last and you have not replied, and emails you one digest (plain text plus HTML). It is read-only against every mailbox except that one send, needs no model, and skips bulk mail using sender patterns, Gmail's category tabs, Outlook's Focused Inbox verdict and list headers. Run it daily from cron or Task Scheduler.
+
+```bash
+email-mcp-digest --dry-run      # scan and print, send nothing
+email-mcp-digest                # scan and send the digest
+email-mcp-digest --render-only  # re-send from the last report without scanning
+```
+
+Every setting is optional and lives in `~/.email-mcp/inbound-digest.json` (or pass `--config <path>`):
+
+```json
+{
+  "digestFrom": "you@example.com",
+  "digestTo": "you@example.com",
+  "ownAddresses": ["alias@example.com"],
+  "handledTag": "handled",
+  "lookbackDays": 120,
+  "reportPath": "~/.email-mcp/inbound-digest/report.json",
+  "contactsPath": "/path/to/contacts.json",
+  "extraAutomatedDomains": ["vendor-newsletters.example"],
+  "accentColor": "#2F4B7C"
+}
+```
+
+- Your own account addresses always count as "you"; `ownAddresses` adds aliases that are not accounts.
+- Tag a thread with `handledTag` (Outlook category or Gmail label) when you answered it another way, and it drops off. A reply clears it automatically.
+- `contactsPath` points to `{ "contacts": [{ "id", "name", "emails": [], "domains": [] }] }`; matching senders are listed first under "Contacts waiting".
+- Optional `dismissalsPath`, `blockedSendersPath`, `boardUrl`, `dismissUrl` and `scheduleTime` hook the digest into your own triage tooling.
 
 ## Usage with Claude Code
 

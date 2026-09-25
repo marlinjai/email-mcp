@@ -7,7 +7,9 @@
   "main": "dist/index.js",
   "bin": {
     "email-mcp": "dist/index.js",
-    "email-mcp-setup": "dist/setup/wizard.js"
+    "email-mcp-setup": "dist/setup/wizard.js",
+    "email-mcp-fetch": "dist/cli/fetch.js",
+    "email-mcp-digest": "dist/cli/digest.js"
   },
   "files": [
     "dist",

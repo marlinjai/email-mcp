@@ -505,6 +505,15 @@ describe('GmailAdapter', () => {
   });
 
   describe('sendEmail', () => {
+    it('joins the Gmail thread when threadId is given', async () => {
+      await adapter.sendEmail({
+        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
+      });
+      expect(mockMessagesSend).toHaveBeenCalledWith(
+        expect.objectContaining({ requestBody: expect.objectContaining({ threadId: 'thread-9' }) }),
+      );
+    });
+
     it('sends email via Gmail API', async () => {
       const result = await adapter.sendEmail({
         to: [{ name: 'Bob', email: 'bob@example.com' }],
@@ -524,6 +533,13 @@ describe('GmailAdapter', () => {
   });
 
   describe('createDraft', () => {
+    it('puts a reply draft in the Gmail thread when threadId is given', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
+      });
+      expect(mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.threadId).toBe('thread-9');
+    });
+
     it('creates draft via Gmail API', async () => {
       const result = await adapter.createDraft({
         to: [{ email: 'bob@example.com' }],
@@ -533,6 +549,24 @@ describe('GmailAdapter', () => {
 
       expect(result.id).toBe('draft-1');
       expect(mockDraftsCreate).toHaveBeenCalled();
+    });
+
+    it('includes attachments and an HTML part in the raw message', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Invoice',
+        body: { text: 'See attached', html: '<p>See <b>attached</b></p>' },
+        attachments: [
+          { filename: 'invoice.pdf', content: Buffer.from('%PDF-1.4 test'), contentType: 'application/pdf' },
+        ],
+      });
+
+      const raw = mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.raw;
+      const mime = Buffer.from(raw, 'base64url').toString();
+      expect(mime).toContain('multipart/mixed');
+      expect(mime).toContain('Content-Type: text/html');
+      expect(mime).toContain('filename=invoice.pdf');
+      expect(mime).toContain(Buffer.from('%PDF-1.4 test').toString('base64'));
     });
   });
 

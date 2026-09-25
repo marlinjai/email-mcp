@@ -105,7 +105,10 @@ export function mapGraphMessage(message: any, accountId: string): Email {
     },
     snippet: message.bodyPreview,
     attachments: [],
+    hasAttachments: message.hasAttachments ?? undefined,
     categories: message.categories || [],
+    inferenceClassification: message.inferenceClassification ?? undefined,
+    webLink: message.webLink ?? undefined,
     flags: {
       read: message.isRead ?? false,
       starred: message.importance === 'high',
