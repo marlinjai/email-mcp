@@ -17,6 +17,7 @@ import type {
 } from '../../models/types.js';
 import { ProviderType } from '../../models/types.js';
 import { mapGmailLabel, mapGmailMessage, buildGmailQuery } from './mapper.js';
+import { buildMimeMessage } from '../mime.js';
 
 export class GmailAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Gmail;
@@ -199,11 +200,11 @@ export class GmailAdapter implements EmailProvider {
 
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     const gmail = this.ensureConnected();
-    const raw = this.buildRfc2822(params);
+    const raw = await this.buildRfc2822(params);
 
     const res = await gmail.users.messages.send({
       userId: 'me',
-      requestBody: { raw },
+      requestBody: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
     });
 
     return {
@@ -214,12 +215,12 @@ export class GmailAdapter implements EmailProvider {
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const gmail = this.ensureConnected();
-    const raw = this.buildRfc2822(params);
+    const raw = await this.buildRfc2822(params);
 
     const res = await gmail.users.drafts.create({
       userId: 'me',
       requestBody: {
-        message: { raw },
+        message: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       },
     });
 
@@ -228,13 +229,13 @@ export class GmailAdapter implements EmailProvider {
 
   async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
     const gmail = this.ensureConnected();
-    const raw = this.buildRfc2822(params);
+    const raw = await this.buildRfc2822(params);
 
     const res = await gmail.users.drafts.update({
       userId: 'me',
       id: draftId,
       requestBody: {
-        message: { raw },
+        message: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       },
     });
 
@@ -639,30 +640,8 @@ export class GmailAdapter implements EmailProvider {
     await gmail.users.settings.filters.delete({ userId: 'me', id: ruleId });
   }
 
-  private buildRfc2822(params: SendEmailParams): string {
-    const lines: string[] = [];
-    lines.push(`From: ${this.email}`);
-    lines.push(
-      `To: ${params.to.map((c) => (c.name ? `"${c.name}" <${c.email}>` : c.email)).join(', ')}`,
-    );
-    if (params.cc?.length) {
-      lines.push(`Cc: ${params.cc.map((c) => c.email).join(', ')}`);
-    }
-    if (params.bcc?.length) {
-      lines.push(`Bcc: ${params.bcc.map((c) => c.email).join(', ')}`);
-    }
-    lines.push(`Subject: ${params.subject}`);
-    if (params.inReplyTo) {
-      lines.push(`In-Reply-To: ${params.inReplyTo}`);
-    }
-    if (params.references?.length) {
-      lines.push(`References: ${params.references.join(' ')}`);
-    }
-    lines.push('MIME-Version: 1.0');
-    lines.push('Content-Type: text/plain; charset=UTF-8');
-    lines.push('');
-    lines.push(params.body.text || params.body.html || '');
-
-    return Buffer.from(lines.join('\r\n')).toString('base64url');
+  private async buildRfc2822(params: SendEmailParams): Promise<string> {
+    const message = await buildMimeMessage(this.email, params, { includeBcc: true });
+    return message.toString('base64url');
   }
 }
