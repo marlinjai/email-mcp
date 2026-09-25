@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
 import type { SendEmailParams } from '../providers/provider.js';
+import { AttachmentsSchema, resolveAttachments } from './attachments.js';
 
 const ContactSchema = z.object({
   email: z.string(),
@@ -29,6 +30,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       bcc: z.array(ContactSchema).optional(),
       subject: z.string(),
       body: BodySchema,
+      attachments: AttachmentsSchema,
     },
     async (args) => {
       try {
@@ -39,6 +41,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           bcc: args.bcc,
           subject: args.subject,
           body: args.body,
+          attachments: resolveAttachments(args.attachments),
         };
         const result = await provider.sendEmail(params);
         return jsonResult(result);
@@ -57,6 +60,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       emailId: z.string(),
       body: BodySchema,
       replyAll: z.boolean().optional(),
+      attachments: AttachmentsSchema,
     },
     async (args) => {
       try {
@@ -88,6 +92,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           body: args.body,
           inReplyTo: messageId,
           references: [messageId],
+          attachments: resolveAttachments(args.attachments),
         };
 
         const result = await provider.sendEmail(params);
@@ -107,6 +112,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       emailId: z.string(),
       to: z.array(ContactSchema),
       body: BodySchema.optional(),
+      attachments: AttachmentsSchema,
     },
     async (args) => {
       try {
@@ -158,6 +164,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           to: args.to,
           subject,
           body: { text: forwardedText, html: forwardedHtml },
+          attachments: resolveAttachments(args.attachments),
         };
 
         const result = await provider.sendEmail(params);
@@ -177,6 +184,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       to: z.array(ContactSchema),
       subject: z.string(),
       body: BodySchema,
+      attachments: AttachmentsSchema,
     },
     async (args) => {
       try {
@@ -185,6 +193,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           to: args.to,
           subject: args.subject,
           body: args.body,
+          attachments: resolveAttachments(args.attachments),
         };
         const result = await provider.createDraft(params);
         return jsonResult(result);
@@ -204,6 +213,9 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       to: z.array(ContactSchema),
       subject: z.string(),
       body: BodySchema,
+      attachments: AttachmentsSchema.describe(
+        "Files to attach. When given, they replace the draft's current attachments. When omitted, Outlook keeps the existing files but Gmail and IMAP drop them (those providers rewrite the whole message), so pass them again to keep them.",
+      ),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when the draft is not in the default Drafts folder)'),
     },
     async (args) => {
@@ -213,6 +225,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           to: args.to,
           subject: args.subject,
           body: args.body,
+          attachments: resolveAttachments(args.attachments),
         };
         const result = await provider.updateDraft(args.draftId, params, args.sourceFolder);
         return jsonResult(result);

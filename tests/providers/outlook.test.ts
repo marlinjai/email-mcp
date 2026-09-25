@@ -514,6 +514,39 @@ describe('OutlookAdapter', () => {
         }),
       );
     });
+
+    it('includes attachments on the new draft', async () => {
+      const mockDraftRequest = createMockGraphRequest({ id: 'draft-att' });
+      mockApiRequests.set('/me/messages', mockDraftRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.createDraft({
+        to: [{ email: 'bob@test.com' }],
+        subject: 'With file',
+        body: { text: 'Attached' },
+        attachments: [{ filename: 'a.pdf', content: Buffer.from('pdf'), contentType: 'application/pdf' }],
+      });
+
+      expect(mockDraftRequest.post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            {
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              name: 'a.pdf',
+              contentType: 'application/pdf',
+              contentBytes: Buffer.from('pdf').toString('base64'),
+            },
+          ],
+        }),
+      );
+    });
   });
 
   describe('updateDraft', () => {
@@ -542,6 +575,55 @@ describe('OutlookAdapter', () => {
           toRecipients: [{ emailAddress: { name: undefined, address: 'bob@test.com' } }],
         }),
       );
+    });
+
+    it('replaces existing attachments when new ones are given', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const listRequest = createMockGraphRequest({ value: [{ id: 'old-1' }] });
+      mockApiRequests.set('/me/messages/draft-123/attachments', listRequest);
+      const deleteRequest = createMockGraphRequest();
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-1', deleteRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.updateDraft('draft-123', {
+        to: [{ email: 'bob@test.com' }],
+        subject: 'Updated Subject',
+        body: { text: 'Updated body' },
+        attachments: [{ filename: 'new.pdf', content: Buffer.from('new'), contentType: 'application/pdf' }],
+      });
+
+      expect(deleteRequest.delete).toHaveBeenCalled();
+      expect(listRequest.post).toHaveBeenCalledWith(expect.objectContaining({ name: 'new.pdf' }));
+    });
+
+    it('leaves attachments alone when none are given', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const listRequest = createMockGraphRequest({ value: [{ id: 'old-1' }] });
+      mockApiRequests.set('/me/messages/draft-123/attachments', listRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.updateDraft('draft-123', {
+        to: [{ email: 'bob@test.com' }],
+        subject: 'Updated Subject',
+        body: { text: 'Updated body' },
+      });
+
+      expect(listRequest.get).not.toHaveBeenCalled();
+      expect(listRequest.post).not.toHaveBeenCalled();
     });
   });
 

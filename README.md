@@ -139,12 +139,14 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 
 ### Sending & Drafts (6)
 
+`email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an optional `attachments` list. Each entry is either `{ path }` (an absolute path to a local file, read by the server) or `{ content, filename }` (base64), with an optional `contentType` (inferred from the extension otherwise). The total is capped at 25 MB.
+
 | Tool | Description |
 |------|-------------|
-| `email_send` | Compose and send a new email (to, cc, bcc, subject, body) |
+| `email_send` | Compose and send a new email (to, cc, bcc, subject, body, attachments) |
 | `email_reply` | Reply to an email (supports reply-all, preserves threading) |
 | `email_forward` | Forward an email to new recipients |
-| `email_draft_create` | Save a draft without sending |
+| `email_draft_create` | Save a draft without sending (attachments supported) |
 | `email_draft_update` | Update an existing draft in place. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended — the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 

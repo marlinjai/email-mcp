@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Outgoing attachments.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` accept an `attachments` list: a local file by absolute `path`, or base64 `content` with a `filename`. The MIME type is inferred from the extension unless `contentType` is given, and the total is capped at 25 MB. On `email_draft_update`, given attachments replace the draft's current ones.
+
+### Fixed
+- **Gmail dropped attachments and sent HTML as plain text.** The Gmail send and draft paths built a single `text/plain` part by hand, so `SendEmailParams.attachments` were ignored and an HTML body arrived as literal markup. Gmail messages and IMAP drafts are now built with nodemailer's MailComposer (already a dependency), which produces the proper multipart structure.
+- **Outlook and IMAP drafts dropped attachments.** Outlook `createDraft` and `updateDraft` now carry attachments (update replaces them explicitly, since a Graph PATCH cannot), and IMAP drafts include them in the appended message.
+
 ## [1.8.0] - 2026-09-18
 
 Credential hardening. A minor release: no tool was renamed or removed, but three things behave differently after upgrading, all listed under "Changed" below.

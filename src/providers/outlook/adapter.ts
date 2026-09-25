@@ -15,6 +15,13 @@ import type {
 import { ProviderType } from '../../models/types.js';
 import { mapGraphFolder, mapGraphMessage, mapGraphAttachment, buildGraphFilter, resolveWellKnownFolder } from './mapper.js';
 
+const toGraphAttachment = (att: { filename: string; contentType: string; content: Buffer }) => ({
+  '@odata.type': '#microsoft.graph.fileAttachment',
+  name: att.filename,
+  contentType: att.contentType,
+  contentBytes: att.content.toString('base64'),
+});
+
 export class OutlookAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Outlook;
   private client: ReturnType<typeof Client.init> | null = null;
@@ -213,12 +220,7 @@ export class OutlookAdapter implements EmailProvider {
 
     const payload: any = { message };
     if (params.attachments?.length) {
-      payload.message.attachments = params.attachments.map((att) => ({
-        '@odata.type': '#microsoft.graph.fileAttachment',
-        name: att.filename,
-        contentType: att.contentType,
-        contentBytes: att.content.toString('base64'),
-      }));
+      payload.message.attachments = params.attachments.map(toGraphAttachment);
     }
 
     await client.api('/me/sendMail').post(payload);
@@ -229,6 +231,9 @@ export class OutlookAdapter implements EmailProvider {
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
     const message = this.buildGraphMessage(params);
+    if (params.attachments?.length) {
+      message.attachments = params.attachments.map(toGraphAttachment);
+    }
 
     const result = await client.api('/me/messages').post(message);
     return { id: result.id };
@@ -239,6 +244,19 @@ export class OutlookAdapter implements EmailProvider {
     const message = this.buildGraphMessage(params);
 
     await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(message);
+
+    // PATCH cannot change attachments, so replace them explicitly when new ones
+    // are given. Omitted attachments leave the draft's existing files in place.
+    if (params.attachments?.length) {
+      const attachmentsPath = `/me/messages/${encodeURIComponent(draftId)}/attachments`;
+      const existing = await client.api(attachmentsPath).select('id').get();
+      for (const att of existing.value || []) {
+        await client.api(`${attachmentsPath}/${encodeURIComponent(att.id)}`).delete();
+      }
+      for (const att of params.attachments) {
+        await client.api(attachmentsPath).post(toGraphAttachment(att));
+      }
+    }
     return { id: draftId };
   }
 
