@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Outgoing attachments.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` accept an `attachments` list: a local file by absolute `path`, or base64 `content` with a `filename`. The MIME type is inferred from the extension unless `contentType` is given, and the total is capped at 25 MB. On `email_draft_update`, given attachments replace the draft's current ones.
+
+- **Reply drafts.** `email_draft_create` takes `inReplyToEmailId` and saves the draft as a reply in that message's thread, so a reply can be reviewed before it is sent.
+- **Reply recipients.** `email_reply` takes `to`, `cc`, `bcc` and `additionalRecipients`. Without `to`, replying to a message you sent yourself addressed the reply back to you.
+- **Forward cc/bcc and original attachments.** `email_forward` takes `cc` and `bcc`, and now carries the original message's attachments (turn off with `includeOriginalAttachments: false`).
+
+- **`email-mcp-fetch`, a headless fetch CLI.** Lists messages since a date as JSON, or saves one attachment to a file, without starting the MCP server, so schedulers and scripts in other languages can read mail through the same accounts and credential store.
+
+### Fixed
+- **Replies did not stay in their thread on Gmail and Outlook.** Gmail places a message in a thread only when the API call carries the `threadId`; headers alone start a new conversation. Outlook threads only through Graph's `createReply`, and `/me/sendMail` always started a new conversation. Replies now pass the Gmail `threadId` and go through `createReply` on Outlook (the reply body replaces Graph's pre-filled quote).
+- **Gmail dropped attachments and sent HTML as plain text.** The Gmail send and draft paths built a single `text/plain` part by hand, so `SendEmailParams.attachments` were ignored and an HTML body arrived as literal markup. Gmail messages and IMAP drafts are now built with nodemailer's MailComposer (already a dependency), which produces the proper multipart structure.
+- **Outlook and IMAP drafts dropped attachments.** Outlook `createDraft` and `updateDraft` now carry attachments (update replaces them explicitly, since a Graph PATCH cannot), and IMAP drafts include them in the appended message.
+
 ## [1.8.0] - 2026-09-18
 
 Credential hardening. A minor release: no tool was renamed or removed, but three things behave differently after upgrading, all listed under "Changed" below.
