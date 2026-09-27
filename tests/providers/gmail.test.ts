@@ -152,6 +152,7 @@ vi.mock('google-auth-library', () => {
   return { OAuth2Client: MockOAuth2Client };
 });
 
+import { simpleParser } from 'mailparser';
 import { GmailAdapter } from '../../src/providers/gmail/adapter.js';
 import { ProviderType } from '../../src/models/types.js';
 import type { AccountCredentials } from '../../src/models/types.js';
@@ -552,6 +553,82 @@ describe('GmailAdapter', () => {
           requestBody: expect.objectContaining({ message: { raw: expect.any(String) } }),
         }),
       );
+    });
+  });
+
+  describe('MIME built for send and drafts', () => {
+    const rich = {
+      to: [{ name: 'Müller, Hans', email: 'hans@example.com' }],
+      bcc: [{ email: 'hidden@example.com' }],
+      subject: 'Grüße 🎉',
+      body: { text: 'Plain part', html: '<p>HTML <b>part</b></p>' },
+      inReplyTo: '<orig@example.com>',
+      references: ['<orig@example.com>'],
+    };
+
+    async function parseRaw(raw: string) {
+      return simpleParser(Buffer.from(raw, 'base64url'));
+    }
+
+    async function expectRichMessage(raw: string) {
+      const parsed = await parseRaw(raw);
+      expect(parsed.text?.trim()).toBe('Plain part');
+      expect(parsed.html).toContain('<p>HTML <b>part</b></p>');
+      expect(parsed.subject).toBe('Grüße 🎉');
+      const to = Array.isArray(parsed.to) ? parsed.to[0] : parsed.to;
+      expect(to?.value).toEqual([{ name: 'Müller, Hans', address: 'hans@example.com' }]);
+      // Gmail reads Bcc recipients from the raw header, so it must survive.
+      const bcc = Array.isArray(parsed.bcc) ? parsed.bcc[0] : parsed.bcc;
+      expect(bcc?.value[0].address).toBe('hidden@example.com');
+      expect(parsed.inReplyTo).toBe('<orig@example.com>');
+      expect(parsed.from?.value[0].address).toBe(testCredentials.email);
+    }
+
+    it('sendEmail keeps both the text and the html part', async () => {
+      await adapter.sendEmail(rich);
+      await expectRichMessage(mockMessagesSend.mock.calls[0][0].requestBody.raw);
+    });
+
+    it('createDraft keeps both the text and the html part', async () => {
+      await adapter.createDraft(rich);
+      await expectRichMessage(mockDraftsCreate.mock.calls[0][0].requestBody.message.raw);
+    });
+
+    it('updateDraft keeps both the text and the html part', async () => {
+      await adapter.updateDraft('draft-1', rich);
+      await expectRichMessage(mockDraftsUpdate.mock.calls[0][0].requestBody.message.raw);
+    });
+
+    it('html-only input is sent as html with a derived text part, not as raw markup', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }],
+        subject: 'HTML only',
+        body: { html: '<p>Hello <i>Bob</i></p>' },
+      });
+      const parsed = await parseRaw(mockDraftsCreate.mock.calls[0][0].requestBody.message.raw);
+      expect(parsed.html).toContain('<p>Hello <i>Bob</i></p>');
+      expect(parsed.text?.trim()).toBe('Hello Bob');
+    });
+
+    it('text-only input stays a plain text message', async () => {
+      await adapter.sendEmail({ to: [{ email: 'bob@example.com' }], subject: 'Plain', body: { text: 'Just text' } });
+      const parsed = await parseRaw(mockMessagesSend.mock.calls[0][0].requestBody.raw);
+      expect(parsed.text?.trim()).toBe('Just text');
+      expect(parsed.html).toBe(false);
+      expect(parsed.headers.get('content-type')).toMatchObject({ value: 'text/plain' });
+    });
+
+    it('sendEmail carries attachments', async () => {
+      await adapter.sendEmail({
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Invoice',
+        body: { text: 'Attached' },
+        attachments: [{ filename: 'invoice.pdf', content: Buffer.from('pdf-bytes'), contentType: 'application/pdf' }],
+      });
+      const parsed = await parseRaw(mockMessagesSend.mock.calls[0][0].requestBody.raw);
+      expect(parsed.attachments).toHaveLength(1);
+      expect(parsed.attachments[0].filename).toBe('invoice.pdf');
+      expect(parsed.attachments[0].content.toString()).toBe('pdf-bytes');
     });
   });
 

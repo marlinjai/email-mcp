@@ -375,7 +375,7 @@ describe('ImapAdapter send, move, delete, mark, createFolder', () => {
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
         from: 'test@example.com',
-        to: '"Bob" <bob@test.com>',
+        to: [{ name: 'Bob', address: 'bob@test.com' }],
         subject: 'Hello',
         text: 'Hi Bob',
         html: '<p>Hi Bob</p>',
@@ -393,9 +393,42 @@ describe('ImapAdapter send, move, delete, mark, createFolder', () => {
     });
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
-        cc: 'cc@test.com',
-        bcc: 'bcc@test.com',
+        cc: ['cc@test.com'],
+        bcc: ['bcc@test.com'],
       })
+    );
+  });
+
+  it('sendEmail derives a text part when only html is given', async () => {
+    await adapter.sendEmail({
+      to: [{ email: 'bob@test.com' }],
+      subject: 'HTML only',
+      body: { html: '<p>Hello <i>Bob</i></p>' },
+    });
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Hello Bob', html: '<p>Hello <i>Bob</i></p>' }),
+    );
+  });
+
+  it('sendEmail sends text only when only text is given', async () => {
+    await adapter.sendEmail({ to: [{ email: 'bob@test.com' }], subject: 'Plain', body: { text: 'Just text' } });
+    const mail = mockSendMail.mock.calls.at(-1)![0];
+    expect(mail.text).toBe('Just text');
+    expect(mail.html).toBeUndefined();
+  });
+
+  it('sendEmail passes display names as address objects so commas and quotes stay intact', async () => {
+    await adapter.sendEmail({
+      to: [{ name: 'Müller, Hans', email: 'hans@test.com' }],
+      cc: [{ name: 'Anna "Ann" Schmidt', email: 'anna@test.com' }],
+      subject: 'Names',
+      body: { text: 'x' },
+    });
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: [{ name: 'Müller, Hans', address: 'hans@test.com' }],
+        cc: [{ name: 'Anna "Ann" Schmidt', address: 'anna@test.com' }],
+      }),
     );
   });
 
@@ -535,7 +568,7 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     const client = (adapter as any).client;
     expect(client.append).toHaveBeenCalledWith(
       'Drafts',
-      expect.any(String),
+      expect.any(Buffer),
       expect.arrayContaining(['\\Draft', '\\Seen']),
     );
   });
@@ -552,9 +585,59 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     expect(client.messageDelete).toHaveBeenCalledWith('99', { uid: true });
     expect(client.append).toHaveBeenCalledWith(
       'Drafts',
-      expect.stringContaining('Updated subject'),
+      expect.any(Buffer),
       expect.arrayContaining(['\\Draft', '\\Seen']),
     );
+    expect(client.append.mock.calls[0][1].toString()).toContain('Subject: Updated subject');
+  });
+
+  it('createDraft stores both the text and the html part, Bcc and encoded headers', async () => {
+    const { simpleParser: parse } = await vi.importActual<typeof import('mailparser')>('mailparser');
+    await adapter.createDraft({
+      to: [{ name: 'Müller, Hans', email: 'hans@test.com' }],
+      bcc: [{ email: 'hidden@test.com' }],
+      subject: 'Entwurf für Jürgen ✉️',
+      body: { text: 'Plain part', html: '<p>HTML <b>part</b></p>' },
+    });
+    const client = (adapter as any).client;
+    const parsed = await parse(client.append.mock.calls[0][1]);
+    expect(parsed.text?.trim()).toBe('Plain part');
+    expect(parsed.html).toContain('<p>HTML <b>part</b></p>');
+    expect(parsed.subject).toBe('Entwurf für Jürgen ✉️');
+    const to = Array.isArray(parsed.to) ? parsed.to[0] : parsed.to;
+    expect(to?.value).toEqual([{ name: 'Müller, Hans', address: 'hans@test.com' }]);
+    const bcc = Array.isArray(parsed.bcc) ? parsed.bcc[0] : parsed.bcc;
+    expect(bcc?.value[0].address).toBe('hidden@test.com');
+  });
+
+  it('createDraft with html only stores the html and a derived text part (it used to be empty)', async () => {
+    const { simpleParser: parse } = await vi.importActual<typeof import('mailparser')>('mailparser');
+    await adapter.createDraft({
+      to: [{ email: 'bob@test.com' }],
+      subject: 'HTML only',
+      body: { html: '<p>Hello <i>Bob</i></p>' },
+    });
+    const client = (adapter as any).client;
+    const parsed = await parse(client.append.mock.calls[0][1]);
+    expect(parsed.html).toContain('<p>Hello <i>Bob</i></p>');
+    expect(parsed.text?.trim()).toBe('Hello Bob');
+  });
+
+  it('updateDraft stores both parts in the new revision', async () => {
+    const { simpleParser: parse } = await vi.importActual<typeof import('mailparser')>('mailparser');
+    await adapter.updateDraft('99', {
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Rev 2',
+      body: { text: 'Plain v2', html: '<p>HTML v2</p>' },
+      inReplyTo: '<orig@test.com>',
+      references: ['<orig@test.com>'],
+    });
+    const client = (adapter as any).client;
+    const parsed = await parse(client.append.mock.calls[0][1]);
+    expect(parsed.text?.trim()).toBe('Plain v2');
+    expect(parsed.html).toContain('<p>HTML v2</p>');
+    expect(parsed.inReplyTo).toBe('<orig@test.com>');
+    expect(parsed.references).toBe('<orig@test.com>');
   });
 
   it('listDrafts returns emails from Drafts folder', async () => {
@@ -601,7 +684,7 @@ describe('ImapAdapter threads, drafts, attachments', () => {
 
     expect(client.append).toHaveBeenCalledWith(
       '[Gmail]/Drafts',
-      expect.any(String),
+      expect.any(Buffer),
       expect.arrayContaining(['\\Draft', '\\Seen']),
     );
   });
@@ -621,7 +704,7 @@ describe('ImapAdapter threads, drafts, attachments', () => {
 
     expect(client.append).toHaveBeenCalledWith(
       '[Gmail]/Entwürfe',
-      expect.any(String),
+      expect.any(Buffer),
       expect.arrayContaining(['\\Draft', '\\Seen']),
     );
   });

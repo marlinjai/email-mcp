@@ -15,6 +15,7 @@ import type {
 import { ProviderType, FolderType } from '../../models/types.js';
 import { mapImapFolder, mapParsedEmail } from './mapper.js';
 import { createSmtpTransport, sendViaSmtp } from './smtp.js';
+import { buildMimeMessage } from '../mime.js';
 
 /**
  * Extracts detailed diagnostic information from ImapFlow errors.
@@ -579,28 +580,19 @@ export class ImapAdapter implements EmailProvider {
     return { id: messageId };
   }
 
-  private buildDraftRfc2822(params: SendEmailParams): string {
-    const lines: string[] = [];
-    lines.push(`From: ${this.email}`);
-    lines.push(`To: ${params.to.map((c) => (c.name ? `"${c.name}" <${c.email}>` : c.email)).join(', ')}`);
-    if (params.cc?.length) {
-      lines.push(`Cc: ${params.cc.map((c) => c.email).join(', ')}`);
-    }
-    lines.push(`Subject: ${params.subject}`);
-    lines.push(`Date: ${new Date().toUTCString()}`);
-    if (params.inReplyTo) lines.push(`In-Reply-To: ${params.inReplyTo}`);
-    if (params.references?.length) lines.push(`References: ${params.references.join(' ')}`);
-    lines.push('MIME-Version: 1.0');
-    lines.push('Content-Type: text/plain; charset=utf-8');
-    lines.push('');
-    lines.push(params.body.text || '');
-    return lines.join('\r\n');
+  /**
+   * Builds the full MIME message a draft is stored as: text and HTML parts,
+   * Bcc kept so the draft remembers its recipients, encoded headers and any
+   * attachments. See `buildMimeMessage`.
+   */
+  private buildDraftMessage(params: SendEmailParams): Promise<Buffer> {
+    return buildMimeMessage(this.email, params);
   }
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = await this.ensureConnected();
 
-    const rawMessage = this.buildDraftRfc2822(params);
+    const rawMessage = await this.buildDraftMessage(params);
     // Resolve the real drafts mailbox instead of assuming a top-level "Drafts"
     // folder. Gmail (and localized accounts) expose it as "[Gmail]/Drafts" /
     // "[Gmail]/Entwürfe", so a hardcoded path makes append fail. See issue #3.
@@ -632,7 +624,7 @@ export class ImapAdapter implements EmailProvider {
       lock.release();
     }
 
-    const rawMessage = this.buildDraftRfc2822(params);
+    const rawMessage = await this.buildDraftMessage(params);
     const result = await client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
     if (!result) throw new Error('Failed to append updated draft');
     return { id: String(result.uid || result) };

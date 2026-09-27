@@ -485,6 +485,34 @@ describe('OutlookAdapter', () => {
         })
       );
     });
+
+    it('sends the html part when both text and html are given (Graph holds one body)', async () => {
+      const mockSendRequest = createMockGraphRequest();
+      mockApiRequests.set('/me/sendMail', mockSendRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.sendEmail({
+        to: [{ name: 'Müller, Hans', email: 'hans@test.com' }],
+        subject: 'Both',
+        body: { text: 'Plain part', html: '<p>HTML part</p>' },
+      });
+
+      expect(mockSendRequest.post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            body: { contentType: 'html', content: '<p>HTML part</p>' },
+            toRecipients: [{ emailAddress: { name: 'Müller, Hans', address: 'hans@test.com' } }],
+          }),
+        })
+      );
+    });
   });
 
   describe('createDraft', () => {

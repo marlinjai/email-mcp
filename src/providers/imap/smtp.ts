@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { SendEmailParams } from '../provider.js';
+import { normalizeBody, toAddress } from '../mime.js';
 import type { PasswordCredentials } from '../../models/types.js';
 
 export function createSmtpTransport(email: string, creds: PasswordCredentials) {
@@ -16,14 +17,17 @@ export async function sendViaSmtp(
   from: string,
   params: SendEmailParams
 ): Promise<string> {
+  // nodemailer only builds multipart/alternative when it gets both parts; it
+  // never derives a text part from HTML, so HTML-only input is normalized here.
+  const { text, html } = normalizeBody(params.body);
   const result = await transport.sendMail({
     from,
-    to: params.to.map((c) => (c.name ? `"${c.name}" <${c.email}>` : c.email)).join(', '),
-    cc: params.cc?.map((c) => c.email).join(', '),
-    bcc: params.bcc?.map((c) => c.email).join(', '),
+    to: params.to.map(toAddress),
+    cc: params.cc?.length ? params.cc.map(toAddress) : undefined,
+    bcc: params.bcc?.length ? params.bcc.map(toAddress) : undefined,
     subject: params.subject,
-    text: params.body.text,
-    html: params.body.html,
+    text,
+    html,
     inReplyTo: params.inReplyTo,
     references: params.references?.join(' '),
     attachments: params.attachments?.map((a) => ({
