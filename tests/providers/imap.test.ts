@@ -623,6 +623,18 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     expect(parsed.text?.trim()).toBe('Hello Bob');
   });
 
+  it('updateDraft keeps the old revision when building the new message fails', async () => {
+    vi.spyOn(adapter as any, 'buildDraftMessage').mockRejectedValueOnce(new Error('MIME build failed'));
+    await expect(adapter.updateDraft('99', {
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Rev 2',
+      body: { text: 'Plain v2' },
+    })).rejects.toThrow('MIME build failed');
+    const client = (adapter as any).client;
+    expect(client.messageDelete).not.toHaveBeenCalled();
+    expect(client.append).not.toHaveBeenCalled();
+  });
+
   it('updateDraft stores both parts in the new revision', async () => {
     const { simpleParser: parse } = await vi.importActual<typeof import('mailparser')>('mailparser');
     await adapter.updateDraft('99', {

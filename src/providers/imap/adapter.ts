@@ -611,6 +611,10 @@ export class ImapAdapter implements EmailProvider {
   async updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }> {
     const client = await this.ensureConnected();
     const draftsFolder = sourceFolder ? await this.resolveFolder(sourceFolder) : await this.resolveFolder('Drafts');
+    // Build the new revision before touching the old one: if MIME compilation
+    // fails, the existing draft must survive instead of being deleted with no
+    // replacement.
+    const rawMessage = await this.buildDraftMessage(params);
 
     let lock;
     try {
@@ -624,7 +628,6 @@ export class ImapAdapter implements EmailProvider {
       lock.release();
     }
 
-    const rawMessage = await this.buildDraftMessage(params);
     const result = await client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
     if (!result) throw new Error('Failed to append updated draft');
     return { id: String(result.uid || result) };
