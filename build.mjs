@@ -17,6 +17,7 @@ const shared = {
     'imapflow',
     'mailparser',
     'nodemailer',
+    'html-to-text',
   ],
 };
 

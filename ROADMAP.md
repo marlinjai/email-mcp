@@ -12,11 +12,12 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
 - [ ] Outgoing attachments: the five MCP tools (`email_send`, `email_draft_create`,
       `email_draft_update`, `email_reply`, and `email_forward`) expose no `attachments` input, so an
       invoice PDF cannot be sent or drafted through the MCP (hit 2026-09-25 drafting Scheunerei
-      Rechnung Nr. 59, fell back to the `gws` CLI). Provider support is partial: Outlook and
-      IMAP/SMTP `email_send` already consume `SendEmailParams.attachments`, while Gmail MIME
-      construction and all draft paths discard them. Expose an `attachments` input (local path or
-      base64 plus filename and MIME type), complete the Gmail and draft-provider paths, add a size
-      cap, and run a live test per provider (2026-09-25)
+      Rechnung Nr. 59, fell back to the `gws` CLI). Provider support: Gmail (send and drafts),
+      IMAP and iCloud drafts, IMAP/SMTP `email_send` and Outlook `email_send` already consume
+      `SendEmailParams.attachments` (the shared MIME builder in `src/providers/mime.ts` since
+      2026-09-27); only the Outlook draft paths still discard them. Expose an `attachments` input
+      (local path or base64 plus filename and MIME type), complete the Outlook draft path, add a
+      size cap, and run a live test per provider (2026-09-27)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: waiting on
       Google. Both blockers Google named on 2026-09-07 are fixed: the privacy policy's "How
       sensitive data is protected" section (live since 2026-09-18), and a new demo video

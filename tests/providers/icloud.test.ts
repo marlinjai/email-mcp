@@ -253,6 +253,23 @@ describe('ICloudAdapter iCloud Junk folder fallbacks', () => {
     await adapter.connect(icloudCredentials);
   });
 
+  it('createDraft stores both the text and the html part (inherited from IMAP)', async () => {
+    const { simpleParser: parse } = await vi.importActual<typeof import('mailparser')>('mailparser');
+    await adapter.connect(icloudCredentials);
+    await adapter.createDraft({
+      to: [{ email: 'bob@test.com' }],
+      subject: 'Grüße',
+      body: { text: 'Plain part', html: '<p>HTML part</p>' },
+    });
+    const client = (adapter as any).client;
+    const raw = client.append.mock.calls[0][1];
+    expect(Buffer.isBuffer(raw)).toBe(true);
+    const parsed = await parse(raw);
+    expect(parsed.text?.trim()).toBe('Plain part');
+    expect(parsed.html).toContain('<p>HTML part</p>');
+    expect(parsed.subject).toBe('Grüße');
+  });
+
   it('uses STATUS count when mailbox.exists is 0 but folder has messages', async () => {
     // iCloud reports EXISTS=0 after SELECT, but STATUS returns real count
     mockMailboxExists = 0;

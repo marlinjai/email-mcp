@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Gmail dropped the HTML part of every outgoing message.** Send, reply, forward, draft create and draft update built the message as `text/plain` only, so a message with both a text and an HTML body lost its HTML (a draft opened in Gmail as "Plain text"), and an HTML-only message arrived showing its raw HTML source. Gmail now receives a proper MIME message: text only stays `text/plain`, HTML only becomes `multipart/alternative` with a readable text part derived from the HTML, and both parts are kept as `multipart/alternative` with text first and HTML second. Attachments passed to the Gmail provider are now included instead of discarded.
+- **IMAP and iCloud drafts lost their HTML and their Bcc recipients.** A draft with both parts was stored as text only, a draft with only HTML was stored with an empty body, and Bcc was never written to the draft. Drafts now use the same MIME builder as Gmail, so both parts, Bcc and attachments are stored.
+- **Umlauts, emoji and quotes in headers could break Gmail and IMAP messages.** Subjects and display names with non-ASCII characters were written as raw 8-bit text instead of being encoded, and a display name containing a double quote (for example `Anna "Ann" Schmidt`) broke the To line. Headers are now RFC 2047 encoded and display names are quoted and escaped correctly on Gmail, IMAP, iCloud and SMTP sends; Cc and Bcc display names are no longer dropped. Non-ASCII bodies are sent as UTF-8 with quoted-printable or base64 transfer encoding.
+- **SMTP sends (IMAP and iCloud accounts) with only an HTML body had no text part.** They now carry a text part derived from the HTML as well.
+
 ## [1.8.0] - 2026-09-18
 
 Credential hardening. A minor release: no tool was renamed or removed, but three things behave differently after upgrading, all listed under "Changed" below.
