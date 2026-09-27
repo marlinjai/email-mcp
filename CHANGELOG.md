@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-27
+
+Formatted emails survive. A patch release: bug fixes only, no tool or input changed.
+
 ### Fixed
 - **Gmail dropped the HTML part of every outgoing message.** Send, reply, forward, draft create and draft update built the message as `text/plain` only, so a message with both a text and an HTML body lost its HTML (a draft opened in Gmail as "Plain text"), and an HTML-only message arrived showing its raw HTML source. Gmail now receives a proper MIME message: text only stays `text/plain`, HTML only becomes `multipart/alternative` with a readable text part derived from the HTML, and both parts are kept as `multipart/alternative` with text first and HTML second. Attachments passed to the Gmail provider are now included instead of discarded.
 - **IMAP and iCloud drafts lost their HTML and their Bcc recipients.** A draft with both parts was stored as text only, a draft with only HTML was stored with an empty body, and Bcc was never written to the draft. Drafts now use the same MIME builder as Gmail, so both parts, Bcc and attachments are stored.
@@ -244,6 +248,7 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.8.1]: https://github.com/marlinjai/email-mcp/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/marlinjai/email-mcp/compare/v1.7.2...v1.8.0
 [1.2.3]: https://github.com/marlinjai/email-mcp/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/marlinjai/email-mcp/compare/v1.2.1...v1.2.2
