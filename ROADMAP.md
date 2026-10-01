@@ -47,8 +47,11 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       audit as the named goal (GitHub Sponsors and Buy Me a Coffee, shown on the site, in the
       README and at the end of the setup wizard; the wizard line ships with the next npm
       release); no paid tier, because gating the shared client needs a server this project
-      does not have. Whether to apply for a grant (NLnet, deadline 2026-11-03, or Prototype
-      Fund) waits on a fit assessment handed to Marlin on 2026-10-01. The site
+      does not have. No grant application, decided by Marlin on 2026-10-01 after a fit
+      assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
+      open fund, Restack, states "AI-related projects are not within scope", and the Prototype
+      Fund pays for six months of near full-time work from 2027-06-01 at about a 9 percent
+      acceptance rate; neither is confirmed to cover this recurring audit fee. The site
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
       approves: close GitHub issue #1 ("unverified app"), update that site section, and
       re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
