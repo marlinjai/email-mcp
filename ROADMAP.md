@@ -51,7 +51,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
       open fund, Restack, states "AI-related projects are not within scope", and the Prototype
       Fund pays for six months of near full-time work from 2027-06-01 at about a 9 percent
-      acceptance rate; neither would pay the audit fee. The site
+      acceptance rate; neither is confirmed to cover this recurring audit fee. The site
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
       approves: close GitHub issue #1 ("unverified app"), update that site section, and
       re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
