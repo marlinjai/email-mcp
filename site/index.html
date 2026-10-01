@@ -132,6 +132,13 @@
       this project so setup needs zero configuration. Prefer your own? Set
       <code>EMAIL_MCP_GMAIL_CLIENT_ID</code>/<code>EMAIL_MCP_GMAIL_CLIENT_SECRET</code>
       (or the Outlook equivalent) and it's used instead — see the README.</li>
+      <li><strong>Google's review of the shared Gmail app is still running.</strong> Until
+      it is complete, Google only lets accounts on the app's test-user list sign in through
+      it, so for Gmail you currently need your own OAuth client. The last open step for the
+      shared app is a yearly independent security assessment (CASA). Google has requested
+      it, and its applicability to this local-only app is being clarified.
+      Status, cost and what we asked Google are in the
+      <a href="/privacy#google-verification">privacy policy</a>.</li>
       <li><strong>Gmail's default scope permits permanent deletion.</strong> Choose the
       "Restricted" scope during setup (or <code>EMAIL_MCP_GMAIL_SCOPE=restricted</code>) to
       drop that permission and keep everything else working.</li>

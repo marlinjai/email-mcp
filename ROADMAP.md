@@ -22,17 +22,32 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       2026-09-27); only the Outlook draft paths still discard them. Expose an `attachments` input
       (local path or base64 plus filename and MIME type), complete the Outlook draft path, add a
       size cap, and run a live test per provider (2026-09-27)
-- [ ] Google OAuth (Open Authorization) verification for the Gmail integration: waiting on
-      Google. Both blockers Google named on 2026-09-07 are fixed: the privacy policy's "How
-      sensitive data is protected" section (live since 2026-09-18), and a new demo video
-      recorded 2026-09-27 (https://youtu.be/L7g0q9khjA0, unlisted) covering the consent screen
-      with all three scopes, permanent delete shown in Gmail's Bin, and the block rule shown in
-      Gmail's filters. The video link is saved in the Cloud Console's Data access section, and
-      the new edge-to-edge app logo is in the pending branding. Google's status on 2026-09-27:
-      "received your form", review up to 4 to 6 weeks, first email within 3 to 5 days. A reply
-      on the Trust and Safety thread sits in Marlin's Gmail Drafts for him to send. When Google
-      approves: close GitHub issue #1 ("unverified app") and re-enable the lumitra.co zone
-      protections (knowledge-base ROADMAP, infra line) (2026-09-27)
+- [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
+      left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
+      https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)
+      was sent and accepted. On 2026-09-30 Google answered that the app must complete a CASA
+      (Cloud Application Security Assessment) at Assurance Level 1 (AL1, formerly Tier 2) with
+      a lab authorized by the App Defense Alliance (ADA) by **2026-12-29**, repeated every 12
+      months. Google charges nothing, the lab does: 675 US dollars per application at TAC
+      Security, Google's preferred lab (Basic plan, two revalidation cycles; 855 with
+      unlimited revalidation; read off casa.tacsecurity.com on 2026-10-01, older write-ups say
+      540). No precedent for a waiver was found: Mimestream, a desktop Gmail client without a
+      server, and Thunderbird for Android both went through CASA. Known risk: Google's API terms, section 4b, say
+      "Developer credentials may not be embedded in open source projects", and the shared
+      client ships in this package; Google's reviewers have had the repository link throughout
+      and have not raised it. All three scopes are on the restricted list, so the wizard's
+      Restricted mode does not avoid it. Next steps, in order: (1) Marlin sends the reply
+      drafted in Gmail on 2026-10-01, which describes the local-only data flow and asks whether
+      the assessment applies, since Google's documentation requires it for an app that "has the
+      ability to access data from or through a third-party server"; (2) if Google says it
+      applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
+      weeks, and a deadline extension is requested from the lab, not from Google); (3) decide
+      who pays the yearly fee, options on the decision page
+      `~/software-dev/decision-pages/2026-10-01-email-mcp-casa-funding.html`. The site
+      documents the status at https://email.lumitra.co/privacy#google-verification. When Google
+      approves: close GitHub issue #1 ("unverified app"), update that site section, and
+      re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
+      (2026-10-01)
 - [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
       (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and
