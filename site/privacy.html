@@ -24,7 +24,7 @@
 
 <main class="legal">
   <h1>Privacy policy</h1>
-  <p class="updated">Last updated: 18 September 2026</p>
+  <p class="updated">Last updated: 1 October 2026</p>
 
   <p><strong>The short version: email-mcp runs on your own machine and has no server of
   its own.</strong> It is an MCP (Model Context Protocol) server you install and run
@@ -199,6 +199,47 @@
   only <code>gmail.modify</code> and <code>gmail.settings.basic</code>, which covers every
   other tool this server exposes (read, send, label, archive, move to trash, manage
   filters).</p>
+
+  <h2 id="google-verification">Google verification and the security assessment</h2>
+  <p>All three Gmail scopes above are on Google's list of
+  <a href="https://developers.google.com/workspace/gmail/api/auth/scopes">restricted
+  scopes</a>, in Restricted mode as well. Google reviews every app that requests them
+  before it can be offered to the public. For the shared OAuth app this project
+  publishes, that review is still running. Status on 1 October 2026:</p>
+  <ul>
+    <li><strong>Submitted and reviewed so far:</strong> the app's branding, homepage and
+    domain, this privacy policy, the requested scopes, and a demo video of the consent
+    screen and each feature.</li>
+    <li><strong>Still open: a security assessment.</strong> On 30 September 2026 Google
+    asked for a CASA (Cloud Application Security Assessment) at Assurance Level 1, formerly
+    called Tier 2, due by 29 December 2026. An independent lab authorized by the
+    <a href="https://www.appdefensealliance.org/home">App Defense Alliance</a> checks the
+    application against a published security standard, and the assessment has to be
+    repeated every 12 months for as long as the app requests restricted scopes.</li>
+    <li><strong>Who charges for it:</strong> Google charges nothing. The lab does: 675 US
+    dollars per assessment at the lab Google names as its preferred partner (its listed
+    price on 1 October 2026), due again every year. This project
+    is free and open source and has no income, so how that yearly fee is covered is not
+    decided yet.</li>
+    <li><strong>Whether it applies at all is being clarified.</strong> Google's
+    <a href="https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification">restricted
+    scope documentation</a> requires the assessment for an app that "has the ability to
+    access data from or through a third-party server". email-mcp has no server of its own
+    (see <a href="#protection">How sensitive data is protected</a>), so we are
+    clarifying with Google whether the assessment applies to it. If it does, the
+    assessment will be done.</li>
+  </ul>
+  <p><strong>What this means for you today:</strong> until the review is complete, Google
+  only lets accounts on the shared app's test-user list sign in through it. Everyone
+  else sees Google's "has not completed the Google verification process" screen. Two
+  ways around that, both free: register your own OAuth client in the Google Cloud
+  Console and set <code>EMAIL_MCP_GMAIL_CLIENT_ID</code> and
+  <code>EMAIL_MCP_GMAIL_CLIENT_SECRET</code> (steps in the
+  <a href="https://github.com/marlinjai/email-mcp#readme">README</a>), or connect Gmail
+  as an "Other IMAP" account with a Google app password. Outlook, iCloud and other IMAP accounts are
+  not affected. Progress is tracked in
+  <a href="https://github.com/marlinjai/email-mcp/issues/1">GitHub issue #1</a>, and this
+  section is updated when the status changes.</p>
 
   <h2 id="limited-use">Google user data: Limited Use</h2>
   <p>email-mcp's use and transfer to any other app of information received from Google
