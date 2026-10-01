@@ -405,6 +405,11 @@ async function main(): Promise<void> {
   }
 
   console.log('\nSetup complete! You can now use the email tools in Claude Code.');
+  console.log(
+    '\nemail-mcp is free and open source. Google requires a yearly independent security\n' +
+      'audit (675 US dollars) for the Gmail sign-in it ships. If email-mcp is useful to you,\n' +
+      'you can help cover it: https://github.com/sponsors/marlinjai',
+  );
 }
 
 main()

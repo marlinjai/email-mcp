@@ -41,9 +41,14 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       the assessment applies, since Google's documentation requires it for an app that "has the
       ability to access data from or through a third-party server"; (2) if Google says it
       applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
-      weeks, and a deadline extension is requested from the lab, not from Google); (3) decide
-      who pays the yearly fee, options on the decision page
-      `~/software-dev/decision-pages/2026-10-01-email-mcp-casa-funding.html`. The site
+      weeks, and a deadline extension is requested from the lab, not from Google). Funding, decided by
+      Marlin on 2026-10-01: he pays the first assessment as a Lumitra business expense and the
+      renewal is decided again in a year; the fee is earned back through donations with the
+      audit as the named goal (GitHub Sponsors and Buy Me a Coffee, shown on the site, in the
+      README and at the end of the setup wizard; the wizard line ships with the next npm
+      release); no paid tier, because gating the shared client needs a server this project
+      does not have. Whether to apply for a grant (NLnet, deadline 2026-11-03, or Prototype
+      Fund) waits on a fit assessment handed to Marlin on 2026-10-01. The site
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
       approves: close GitHub issue #1 ("unverified app"), update that site section, and
       re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
