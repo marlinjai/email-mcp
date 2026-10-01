@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **The setup wizard ends with a short note on how the project is funded.** After "Setup complete!" it prints three lines: email-mcp is free, Google requires a yearly independent security audit (675 US dollars) for the Gmail sign-in it ships, and a link to GitHub Sponsors. Printed once per wizard run, nothing else changes.
+
 ## [1.8.1] - 2026-09-27
 
 Formatted emails survive. A patch release: bug fixes only, no tool or input changed.
