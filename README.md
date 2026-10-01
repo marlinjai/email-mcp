@@ -267,7 +267,7 @@ can reach it.
 
 ## Support
 
-email-mcp is free and has no paid tier. Its one fixed cost is the independent security assessment Google requires every year for the shared Gmail sign-in (CASA, Cloud Application Security Assessment): 675 US dollars a year, paid by the maintainer. Eight sponsors at 7 US dollars a month cover it. If this project is useful to you, you can help:
+email-mcp is free and has no paid tier. Its one fixed cost is the independent security assessment Google requires every year for the shared Gmail sign-in (CASA, Cloud Application Security Assessment): 675 US dollars a year, paid by the maintainer. Nine sponsors at 7 US dollars a month cover it. If this project is useful to you, you can help:
 
 - [GitHub Sponsors](https://github.com/sponsors/marlinjai)
 - [Buy Me a Coffee](https://buymeacoffee.com/marlinjai)
