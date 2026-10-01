@@ -32,7 +32,10 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       Security, Google's preferred lab (Basic plan, two revalidation cycles; 855 with
       unlimited revalidation; read off casa.tacsecurity.com on 2026-10-01, older write-ups say
       540). No precedent for a waiver was found: Mimestream, a desktop Gmail client without a
-      server, and Thunderbird for Android both went through CASA. All three scopes are on the restricted list, so the wizard's
+      server, and Thunderbird for Android both went through CASA. Known risk: Google's API terms, section 4b, say
+      "Developer credentials may not be embedded in open source projects", and the shared
+      client ships in this package; Google's reviewers have had the repository link throughout
+      and have not raised it. All three scopes are on the restricted list, so the wizard's
       Restricted mode does not avoid it. Next steps, in order: (1) Marlin sends the reply
       drafted in Gmail on 2026-10-01, which describes the local-only data flow and asks whether
       the assessment applies, since Google's documentation requires it for an app that "has the
