@@ -42,12 +42,18 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       ability to access data from or through a third-party server"; (2) if Google says it
       applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
       weeks, and a deadline extension is requested from the lab, not from Google). Funding, decided by
-      Marlin on 2026-10-01: he pays the first assessment as a Lumitra business expense and the
-      renewal is decided again in a year; the fee is earned back through donations with the
-      audit as the named goal (GitHub Sponsors and Buy Me a Coffee, shown on the site, in the
-      README and at the end of the setup wizard; the wizard line ships with the next npm
-      release); no paid tier, because gating the shared client needs a server this project
-      does not have. No grant application, decided by Marlin on 2026-10-01 after a fit
+      Marlin on 2026-10-01 and 2026-10-02: donations are collected toward the 675 US dollars
+      until 2026-11-02 (GitHub Sponsors and Buy Me a Coffee), Marlin pays what is missing on
+      that day as a Lumitra business expense, and the renewal is decided again in a year; no
+      paid tier, because gating the shared client needs a server this project does not have.
+      The homepage shows a funding bar rendered by `scripts/funding.mjs` in the site deploy
+      workflow (every deploy and daily). It shows the goal without an amount until Marlin adds
+      two repository secrets: `GH_SPONSORS_TOKEN` (classic personal access token of his
+      account, scope `read:user`) and `BMC_TOKEN` (read-only token from the Buy Me a Coffee
+      developer dashboard). The Buy Me a Coffee response fields are taken from its public
+      client libraries, so the first run with `BMC_TOKEN` is the real test: a mismatch turns
+      the deploy run red and the bar keeps the last amount. The setup wizard's donation line
+      ships with the next npm release. No grant application, decided by Marlin on 2026-10-01 after a fit
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
       open fund, Restack, states "AI-related projects are not within scope", and the Prototype
       Fund pays for six months of near full-time work from 2027-06-01 at about a 9 percent

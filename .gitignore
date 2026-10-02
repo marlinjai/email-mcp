@@ -12,3 +12,6 @@ config/
 
 # scroll-craft build workspace (brief, fingerprints, lab shots); the shipped page lives in site/demo
 scrollcraft/
+
+# Generated on every site deploy by scripts/funding.mjs
+site/funding.json
