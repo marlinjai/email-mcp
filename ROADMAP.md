@@ -50,9 +50,11 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       workflow (every deploy and daily). It shows the goal without an amount until Marlin adds
       two repository secrets: `GH_SPONSORS_TOKEN` (classic personal access token of his
       account, scope `read:user`) and `BMC_TOKEN` (read-only token from the Buy Me a Coffee
-      developer dashboard). The Buy Me a Coffee response fields are taken from its public
-      client libraries, so the first run with `BMC_TOKEN` is the real test: a mismatch turns
-      the deploy run red and the bar keeps the last amount. The setup wizard's donation line
+      developer dashboard). The Buy Me a Coffee supporter fields match what the open source client
+      mayeu20/buymeacoffee-mcp observed live in September 2026; the membership fields are
+      documented but unobserved (that account had no members), so the first membership is the
+      real test: a mismatch turns the deploy run red and the bar keeps the last amount.
+      The setup wizard's donation line
       ships with the next npm release. No grant application, decided by Marlin on 2026-10-01 after a fit
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
       open fund, Restack, states "AI-related projects are not within scope", and the Prototype
@@ -61,7 +63,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
       approves: close GitHub issue #1 ("unverified app"), update that site section, and
       re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
-      (2026-10-01)
+      (2026-10-02)
 - [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
       (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and

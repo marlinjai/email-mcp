@@ -45,6 +45,18 @@ describe('sumBmcSupporters', () => {
     ])).toEqual({ cents: 0, supporters: 0 });
   });
 
+  it('reads the refund flag in every form the API sends it', () => {
+    const paid = [null, undefined, false, 0, '0'].map((is_refunded) => ({ ...base, is_refunded }));
+    expect(sumBmcSupporters(paid)).toEqual({ cents: 7500, supporters: 5 });
+    const refunded = [true, 1, '1'].map((is_refunded) => ({ ...base, is_refunded }));
+    expect(sumBmcSupporters([...refunded, { ...base, refunded_at: '2026-10-04 10:00:00' }])).toEqual({ cents: 0, supporters: 0 });
+  });
+
+  it('does not count free downloads as supporters', () => {
+    expect(sumBmcSupporters([{ ...base, support_coffee_price: '0.0000' }, { ...base, support_coffees: 0 }]))
+      .toEqual({ cents: 0, supporters: 0 });
+  });
+
   it('converts euros with the configured rate', () => {
     expect(sumBmcSupporters([{ ...base, support_coffees: 1, support_coffee_price: 10, support_currency: 'EUR' }]).cents)
       .toBe(Math.round(10 * CONFIG.usdPerUnit.EUR * 100));

@@ -90,6 +90,15 @@ export function sumGithub(nodes) {
   return { cents, supporters };
 }
 
+/** The API sends the flag as null, a boolean, a number or the text "0" / "1". */
+function isRefunded(support) {
+  const flag = support.is_refunded;
+  if (support.refunded_at) return true;
+  if (flag === null || flag === undefined || flag === false) return false;
+  if (flag === true) return true;
+  return Number(flag) !== 0;
+}
+
 /**
  * Buy Me a Coffee one-time supporters: coffees times price, refunds left out,
  * only from the campaign start on.
@@ -102,9 +111,11 @@ export function sumBmcSupporters(supporters, config = CONFIG) {
     if (typeof s?.support_created_on !== 'string') {
       throw new Error('Unexpected response: supporter without "support_created_on"');
     }
-    if (s.is_refunded) continue;
+    if (isRefunded(s)) continue;
     if (s.support_created_on.slice(0, 10) < config.campaignStart) continue;
     const amount = requireNumber(s.support_coffees, 'support_coffees') * requireNumber(s.support_coffee_price, 'support_coffee_price');
+    // Free downloads show up as supports with an amount of zero.
+    if (amount <= 0) continue;
     cents += toUsdCents(amount, s.support_currency, config.usdPerUnit);
     count += 1;
   }
@@ -262,10 +273,14 @@ async function fetchGithub(token, config) {
   throw new Error('GitHub Sponsors: more than 50 pages of sponsors, refusing to guess');
 }
 
-async function fetchBmcList(token, resource) {
+// Field names and envelope as documented by Buy Me a Coffee and as observed
+// live by the open source client mayeu20/buymeacoffee-mcp (September 2026):
+// five rows per page, newest first, `next_page_url: null` on the last page,
+// and `{ "error": "No supporters" }` with HTTP 200 for an empty account.
+async function fetchBmcList(token, resource, { query = '', dateField = null, since = null } = {}) {
   const items = [];
   for (let page = 1; page <= 200; page += 1) {
-    const res = await fetch(`https://developers.buymeacoffee.com/api/v1/${resource}?page=${page}`, {
+    const res = await fetch(`https://developers.buymeacoffee.com/api/v1/${resource}?page=${page}${query}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'User-Agent': 'email-mcp-funding' },
     });
     if (!res.ok) throw new Error(`Buy Me a Coffee ${resource}: HTTP ${res.status}`);
@@ -275,13 +290,23 @@ async function fetchBmcList(token, resource) {
     if (!Array.isArray(body.data)) throw new Error(`Buy Me a Coffee ${resource}: unexpected response shape`);
     items.push(...body.data);
     if (!body.next_page_url || page >= (body.last_page ?? page)) return items;
+    // Rows come newest first: a page entirely older than the campaign means
+    // the rest is older too.
+    if (dateField && since && body.data.length > 0
+      && body.data.every((row) => typeof row?.[dateField] === 'string' && row[dateField].slice(0, 10) < since)) {
+      return items;
+    }
   }
   throw new Error(`Buy Me a Coffee ${resource}: more than 200 pages, refusing to guess`);
 }
 
 async function fetchBmc(token, now, config) {
-  const one = sumBmcSupporters(await fetchBmcList(token, 'supporters'), config);
-  const members = sumBmcMemberships(await fetchBmcList(token, 'subscriptions'), now, config);
+  const one = sumBmcSupporters(
+    await fetchBmcList(token, 'supporters', { dateField: 'support_created_on', since: config.campaignStart }),
+    config,
+  );
+  // status=all includes cancelled memberships, whose past payments still count.
+  const members = sumBmcMemberships(await fetchBmcList(token, 'subscriptions', { query: '&status=all' }), now, config);
   return { cents: one.cents + members.cents, supporters: one.supporters + members.supporters };
 }
 
