@@ -24,7 +24,7 @@
 
 <main class="legal">
   <h1>Privacy policy</h1>
-  <p class="updated">Last updated: 1 October 2026</p>
+  <p class="updated">Last updated: 2 October 2026</p>
 
   <p><strong>The short version: email-mcp runs on your own machine and has no server of
   its own.</strong> It is an MCP (Model Context Protocol) server you install and run
@@ -199,6 +199,19 @@
   only <code>gmail.modify</code> and <code>gmail.settings.basic</code>, which covers every
   other tool this server exposes (read, send, label, archive, move to trash, manage
   filters).</p>
+  <p><code>gmail.settings.basic</code> is used for two kinds of Gmail filter, both created
+  when your assistant receives a request to create one: block rules, which delete or archive mail
+  from a sender you named, and forwarding rules, which send matching mail on to another
+  address (for example invoices to a bookkeeping address). Forwarding is switched off
+  by default. It works only for addresses that you listed yourself in the
+  <code>EMAIL_MCP_FORWARD_ALLOWLIST</code> setting of the program, which no tool of
+  email-mcp can change, and that you also added and confirmed as a forwarding address
+  in Gmail's own settings. email-mcp cannot add a forwarding address to your Google
+  account: it does not request the scope that would allow that. For Outlook, where
+  Microsoft asks for no confirmation, the same setting is the only way to allow a
+  target. You can see every forwarding rule on an account with
+  <code>email_list_forward_rules</code> and remove one with
+  <code>email_delete_forward_rule</code>, or in your mail provider's settings.</p>
 
   <h2 id="google-verification">Google verification and the security assessment</h2>
   <p>All three Gmail scopes above are on Google's list of

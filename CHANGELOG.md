@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Forwarding rules: `email_create_forward_rule`, `email_list_forward_rules`, `email_delete_forward_rule`.** A standing rule that forwards future mail matching a sender, subject or header to another address, on Gmail (a filter) and Outlook (an inbox rule). Forwarding is off until you allow a target: the tool only accepts addresses listed in the new `EMAIL_MCP_FORWARD_ALLOWLIST` environment variable (comma-separated), which no tool can change, so an email that asks the assistant to forward mail somewhere cannot get its way. On Gmail the target must also be a confirmed forwarding address of the account; a missing or unconfirmed one is answered with the manual step. Creating the same rule twice returns the existing one, the original stays in the inbox unless `keepInInbox` is `false`, and the list includes forwarding rules made by hand in Gmail or Outlook. iCloud and generic IMAP say that they have no rule mechanism. No new scope: Gmail uses `gmail.settings.basic`, Outlook `MailboxSettings.ReadWrite`, both already requested for block rules.
 - **The setup wizard ends with a short note on how the project is funded.** After "Setup complete!" it prints three lines: email-mcp is free, Google requires a yearly independent security audit (675 US dollars) for the Gmail sign-in it ships, and a link to GitHub Sponsors. Printed once per wizard run, nothing else changes.
+
+### Changed
+- **`email_list_block_rules` no longer lists forwarding rules.** It used to show every Gmail filter and every Outlook inbox rule, so a forwarding rule appeared as a "moveToJunk" block rule. Those now appear in `email_list_forward_rules` only.
 
 ## [1.8.1] - 2026-09-27
 

@@ -6,6 +6,7 @@ import { registerReadingTools } from './tools/reading.js';
 import { registerSendingTools } from './tools/sending.js';
 import { registerOrganizingTools } from './tools/organizing.js';
 import { registerModerationTools } from './tools/moderation.js';
+import { registerForwardingTools } from './tools/forwarding.js';
 
 /**
  * The version reported to MCP clients in the initialize handshake. Kept equal
@@ -34,6 +35,7 @@ export async function createServer(accountManager?: AccountManager): Promise<Ser
   registerSendingTools(server, mgr);
   registerOrganizingTools(server, mgr);
   registerModerationTools(server, mgr);
+  registerForwardingTools(server, mgr);
 
   return { server, accountManager: mgr };
 }

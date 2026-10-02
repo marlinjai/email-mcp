@@ -113,6 +113,7 @@ const mockDraftsGet = vi.fn();
 const mockFiltersCreate = vi.fn();
 const mockFiltersList = vi.fn();
 const mockFiltersDelete = vi.fn();
+const mockForwardingAddressesList = vi.fn();
 
 // Mock googleapis
 vi.mock('googleapis', () => ({
@@ -135,6 +136,7 @@ vi.mock('googleapis', () => ({
         drafts: { create: mockDraftsCreate, update: mockDraftsUpdate, list: mockDraftsList, get: mockDraftsGet },
         settings: {
           filters: { create: mockFiltersCreate, list: mockFiltersList, delete: mockFiltersDelete },
+          forwardingAddresses: { list: mockForwardingAddressesList },
         },
       },
     }),
@@ -198,6 +200,9 @@ function resetMocks() {
   mockFiltersCreate.mockResolvedValue({ data: { id: 'filter-1' } });
   mockFiltersList.mockResolvedValue({ data: { filter: [] } });
   mockFiltersDelete.mockResolvedValue({ data: {} });
+  mockForwardingAddressesList.mockResolvedValue({
+    data: { forwardingAddresses: [{ forwardingEmail: 'expenses@example.com', verificationStatus: 'accepted' }] },
+  });
 }
 
 describe('GmailAdapter', () => {
@@ -819,12 +824,150 @@ describe('GmailAdapter', () => {
         { id: 'f2', matchType: 'subjectContains', value: 'prize', action: 'moveToJunk', createdAt: '' },
       ]);
     });
+
+    it('leaves forwarding filters out: they are forward rules, not block rules', async () => {
+      mockFiltersList.mockResolvedValue({
+        data: {
+          filter: [
+            { id: 'f1', criteria: { from: '@bad.com' }, action: { addLabelIds: ['TRASH'] } },
+            { id: 'f2', criteria: { from: '@vendor.com' }, action: { forward: 'expenses@example.com' } },
+          ],
+        },
+      });
+
+      const rules = await adapter.listBlockRules();
+      expect(rules.map((r) => r.id)).toEqual(['f1']);
+    });
   });
 
   describe('deleteBlockRule', () => {
     it('calls filters.delete with the rule id', async () => {
       await adapter.deleteBlockRule('filter-1');
       expect(mockFiltersDelete).toHaveBeenCalledWith({ userId: 'me', id: 'filter-1' });
+    });
+  });
+
+  describe('createForwardRule', () => {
+    const rule = { matchType: 'senderDomain' as const, value: 'vendor.com', forwardTo: 'expenses@example.com', keepInInbox: true };
+
+    it('creates a forwarding filter that leaves the original in the inbox', async () => {
+      const result = await adapter.createForwardRule(rule);
+
+      expect(mockFiltersCreate).toHaveBeenCalledWith({
+        userId: 'me',
+        requestBody: { criteria: { from: '@vendor.com' }, action: { forward: 'expenses@example.com' } },
+      });
+      expect(result).toEqual({ id: 'filter-1' });
+    });
+
+    it('also skips the inbox when keepInInbox is false', async () => {
+      await adapter.createForwardRule({ ...rule, keepInInbox: false });
+      expect(mockFiltersCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestBody: expect.objectContaining({ action: { forward: 'expenses@example.com', removeLabelIds: ['INBOX'] } }),
+        }),
+      );
+    });
+
+    it('maps the other match types like block rules do', async () => {
+      await adapter.createForwardRule({ ...rule, matchType: 'subjectContains', value: 'Invoice' });
+      expect(mockFiltersCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestBody: expect.objectContaining({ criteria: { subject: 'Invoice' } }) }),
+      );
+    });
+
+    it('finds the forwarding address without regard to case', async () => {
+      await adapter.createForwardRule({ ...rule, forwardTo: 'Expenses@Example.com' });
+      expect(mockFiltersCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestBody: expect.objectContaining({ action: { forward: 'expenses@example.com' } }) }),
+      );
+    });
+
+    it('explains the manual step when the address was never added in Gmail', async () => {
+      mockForwardingAddressesList.mockResolvedValue({ data: {} });
+      await expect(adapter.createForwardRule(rule)).rejects.toThrow(/not a forwarding address of this Gmail account yet/);
+      expect(mockFiltersCreate).not.toHaveBeenCalled();
+    });
+
+    it('explains the confirmation step when the address is still pending', async () => {
+      mockForwardingAddressesList.mockResolvedValue({
+        data: { forwardingAddresses: [{ forwardingEmail: 'expenses@example.com', verificationStatus: 'pending' }] },
+      });
+      await expect(adapter.createForwardRule(rule)).rejects.toThrow(/not confirmed yet/);
+      expect(mockFiltersCreate).not.toHaveBeenCalled();
+    });
+
+    it('returns the existing filter when the same rule is already there', async () => {
+      mockFiltersList.mockResolvedValue({
+        data: { filter: [{ id: 'f7', criteria: { from: '@vendor.com' }, action: { forward: 'expenses@example.com' } }] },
+      });
+      const result = await adapter.createForwardRule(rule);
+      expect(result).toEqual({ id: 'f7', alreadyExisted: true });
+      expect(mockFiltersCreate).not.toHaveBeenCalled();
+    });
+
+    it('creates a new filter when the match is the same but the target differs', async () => {
+      mockForwardingAddressesList.mockResolvedValue({
+        data: {
+          forwardingAddresses: [
+            { forwardingEmail: 'expenses@example.com', verificationStatus: 'accepted' },
+            { forwardingEmail: 'books@example.com', verificationStatus: 'accepted' },
+          ],
+        },
+      });
+      mockFiltersList.mockResolvedValue({
+        data: { filter: [{ id: 'f7', criteria: { from: '@vendor.com' }, action: { forward: 'books@example.com' } }] },
+      });
+      const result = await adapter.createForwardRule(rule);
+      expect(result).toEqual({ id: 'filter-1' });
+    });
+  });
+
+  describe('listForwardRules', () => {
+    it('returns only filters that forward, with target and inbox behaviour', async () => {
+      mockFiltersList.mockResolvedValue({
+        data: {
+          filter: [
+            { id: 'f1', criteria: { from: '@bad.com' }, action: { addLabelIds: ['TRASH'] } },
+            { id: 'f2', criteria: { from: '@vendor.com' }, action: { forward: 'expenses@example.com' } },
+            { id: 'f3', criteria: { subject: 'Invoice' }, action: { forward: 'books@example.com', removeLabelIds: ['INBOX'] } },
+          ],
+        },
+      });
+
+      expect(await adapter.listForwardRules()).toEqual([
+        { id: 'f2', matchType: 'senderDomain', value: 'vendor.com', forwardTo: 'expenses@example.com', keepInInbox: true, createdAt: '' },
+        { id: 'f3', matchType: 'subjectContains', value: 'Invoice', forwardTo: 'books@example.com', keepInInbox: false, createdAt: '' },
+      ]);
+    });
+
+    it('is empty for an account without filters', async () => {
+      mockFiltersList.mockResolvedValue({ data: {} });
+      expect(await adapter.listForwardRules()).toEqual([]);
+    });
+  });
+
+  describe('deleteForwardRule', () => {
+    beforeEach(() => {
+      mockFiltersList.mockResolvedValue({
+        data: {
+          filter: [
+            { id: 'f1', criteria: { from: '@bad.com' }, action: { addLabelIds: ['TRASH'] } },
+            { id: 'f2', criteria: { from: '@vendor.com' }, action: { forward: 'expenses@example.com' } },
+          ],
+        },
+      });
+    });
+
+    it('deletes a forwarding filter by id', async () => {
+      await adapter.deleteForwardRule('f2');
+      expect(mockFiltersDelete).toHaveBeenCalledWith({ userId: 'me', id: 'f2' });
+    });
+
+    it('refuses an id that is not a forwarding filter, so a block rule is not removed by mistake', async () => {
+      await expect(adapter.deleteForwardRule('f1')).rejects.toThrow(/No forwarding rule with id f1/);
+      await expect(adapter.deleteForwardRule('nope')).rejects.toThrow(/No forwarding rule with id nope/);
+      expect(mockFiltersDelete).not.toHaveBeenCalled();
     });
   });
 });
