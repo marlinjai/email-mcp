@@ -18,7 +18,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       and the `EMAIL_MCP_FORWARD_ALLOWLIST` guard are built and tested against mocks, and
       released: npm latest is 1.9.0 since 2026-10-02 (tag v1.9.0, GitHub release). Both
       prerequisites for Marlin's first real use are in place since 2026-10-02:
-      expenses@marlinjai.com is a confirmed forwarding address of marlinjaipohl@gmail.com
+      expenses@marlinjai.com is a confirmed forwarding address of the configured Gmail account
       (whole-mailbox forwarding stays disabled), and `EMAIL_MCP_FORWARD_ALLOWLIST` is set in the
       Infisical Dotfiles project (env dev, path /), which the `cc.sh` launcher injects into
       Claude Code, so the email server inherits it after a restart. Open: the live check on a
