@@ -63,10 +63,11 @@ Code, 40 tests, README, changelog, privacy policy section on what
 
 ## Open
 
+Released as 1.9.0 on 2026-10-02.
+
 - Live check on a real Gmail account and a real Outlook account after the release:
   create, list, see the rule in the provider's settings, delete. The filter with
   `action.forward` under `gmail.settings.basic` follows Google's reference but has not
   run against the real API yet.
-- npm release 1.9.0 (new tools, so a minor version).
 - The sentence to Google is in the reply drafted in Marlin's Gmail; it counts once
   he has sent it.
