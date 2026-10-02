@@ -14,6 +14,8 @@ import type {
   BatchResult,
   BlockRuleInput,
   BlockRule,
+  ForwardRuleInput,
+  ForwardRule,
 } from '../../models/types.js';
 import { ProviderType } from '../../models/types.js';
 import { mapGmailLabel, mapGmailMessage, buildGmailQuery } from './mapper.js';
@@ -561,31 +563,47 @@ export class GmailAdapter implements EmailProvider {
     });
   }
 
-  async createBlockRule(rule: BlockRuleInput): Promise<{ id: string }> {
-    const gmail = this.ensureConnected();
+  private filterCriteria(matchType: BlockRuleInput['matchType'], value: string): Record<string, unknown> {
     const criteria: Record<string, unknown> = {};
 
-    switch (rule.matchType) {
+    switch (matchType) {
       case 'senderDomain':
         // Gmail's own filter UI represents "any sender at this domain" as
         // a From value starting with '@' — this is standard filter syntax,
         // not a documented API field, but it's what Gmail itself generates.
-        criteria.from = `@${rule.value}`;
+        criteria.from = `@${value}`;
         break;
       case 'senderAddress':
-        criteria.from = rule.value;
+        criteria.from = value;
         break;
       case 'subjectContains':
-        criteria.subject = rule.value;
+        criteria.subject = value;
         break;
       case 'headerContains':
         // Gmail's filter API has no field for an arbitrary header (e.g.
         // Reply-To). `query` accepts full Gmail search syntax and Gmail
         // indexes most header content for search, so this is the closest
         // available match — a heuristic, not a guaranteed header match.
-        criteria.query = rule.value;
+        criteria.query = value;
         break;
     }
+
+    return criteria;
+  }
+
+  /** The reverse of filterCriteria, for listing. A best-effort reading of filters made elsewhere. */
+  private readCriteria(criteria: any): { matchType: BlockRuleInput['matchType']; value: string } {
+    if (typeof criteria?.from === 'string' && criteria.from.startsWith('@')) {
+      return { matchType: 'senderDomain', value: criteria.from.slice(1) };
+    }
+    if (criteria?.from) return { matchType: 'senderAddress', value: criteria.from };
+    if (criteria?.subject) return { matchType: 'subjectContains', value: criteria.subject };
+    return { matchType: 'headerContains', value: criteria?.query || '' };
+  }
+
+  async createBlockRule(rule: BlockRuleInput): Promise<{ id: string }> {
+    const gmail = this.ensureConnected();
+    const criteria = this.filterCriteria(rule.matchType, rule.value);
 
     // Gmail's filter Action rejects SPAM in addLabelIds ("Invalid label
     // SPAM in AddLabelIds") — confirmed live, not just from docs. Only
@@ -610,25 +628,12 @@ export class GmailAdapter implements EmailProvider {
   async listBlockRules(): Promise<BlockRule[]> {
     const gmail = this.ensureConnected();
     const res = await gmail.users.settings.filters.list({ userId: 'me' });
-    return (res.data.filter || []).map((f: any): BlockRule => {
-      const criteria = f.criteria || {};
+    // A filter that forwards is a forward rule (listForwardRules), not a block rule.
+    return (res.data.filter || []).filter((f: any) => !f.action?.forward).map((f: any): BlockRule => {
       const addLabelIds: string[] = f.action?.addLabelIds || [];
-      let matchType: BlockRuleInput['matchType'] = 'headerContains';
-      let value = criteria.query || '';
-      if (typeof criteria.from === 'string' && criteria.from.startsWith('@')) {
-        matchType = 'senderDomain';
-        value = criteria.from.slice(1);
-      } else if (criteria.from) {
-        matchType = 'senderAddress';
-        value = criteria.from;
-      } else if (criteria.subject) {
-        matchType = 'subjectContains';
-        value = criteria.subject;
-      }
       return {
         id: f.id || '',
-        matchType,
-        value,
+        ...this.readCriteria(f.criteria),
         action: addLabelIds.includes('TRASH') ? 'delete' : 'moveToJunk',
         createdAt: '', // Gmail's filter API does not expose a creation timestamp
       };
@@ -638,6 +643,69 @@ export class GmailAdapter implements EmailProvider {
   async deleteBlockRule(ruleId: string): Promise<void> {
     const gmail = this.ensureConnected();
     await gmail.users.settings.filters.delete({ userId: 'me', id: ruleId });
+  }
+
+  /**
+   * Gmail only forwards to an address the user has added and confirmed under
+   * Settings, "Forwarding and POP/IMAP". Adding one through the API needs a
+   * scope this app does not request (gmail.settings.sharing), so a missing or
+   * unconfirmed address is answered with the manual step, before Gmail's own
+   * less helpful error.
+   */
+  async createForwardRule(rule: ForwardRuleInput): Promise<{ id: string; alreadyExisted?: boolean }> {
+    const gmail = this.ensureConnected();
+    const target = rule.forwardTo.trim().toLowerCase();
+
+    const addresses = await gmail.users.settings.forwardingAddresses.list({ userId: 'me' });
+    const known = (addresses.data.forwardingAddresses || []).find(
+      (a: any) => (a.forwardingEmail || '').toLowerCase() === target,
+    );
+    if (!known) {
+      throw new Error(
+        `${rule.forwardTo} is not a forwarding address of this Gmail account yet. Add it once in Gmail under Settings, "Forwarding and POP/IMAP", "Add a forwarding address", confirm the email Google sends to it, then run this again.`,
+      );
+    }
+    if (known.verificationStatus !== 'accepted') {
+      throw new Error(
+        `${rule.forwardTo} was added to this Gmail account but not confirmed yet. Open the confirmation email Google sent to that address, confirm it, then run this again.`,
+      );
+    }
+
+    const existing = (await this.listForwardRules()).find(
+      (r) => r.matchType === rule.matchType && r.value === rule.value && r.forwardTo.toLowerCase() === target,
+    );
+    if (existing) return { id: existing.id, alreadyExisted: true };
+
+    const action: Record<string, unknown> = { forward: known.forwardingEmail };
+    if (!rule.keepInInbox) action.removeLabelIds = ['INBOX'];
+
+    const res = await gmail.users.settings.filters.create({
+      userId: 'me',
+      requestBody: { criteria: this.filterCriteria(rule.matchType, rule.value), action },
+    });
+
+    return { id: res.data.id || '' };
+  }
+
+  /** Every filter that forwards, including ones made by hand in Gmail. */
+  async listForwardRules(): Promise<ForwardRule[]> {
+    const gmail = this.ensureConnected();
+    const res = await gmail.users.settings.filters.list({ userId: 'me' });
+    return (res.data.filter || []).filter((f: any) => f.action?.forward).map((f: any): ForwardRule => ({
+      id: f.id || '',
+      ...this.readCriteria(f.criteria),
+      forwardTo: f.action.forward,
+      keepInInbox: !(f.action.removeLabelIds || []).includes('INBOX'),
+      createdAt: '', // Gmail's filter API does not expose a creation timestamp
+    }));
+  }
+
+  async deleteForwardRule(ruleId: string): Promise<void> {
+    const rules = await this.listForwardRules();
+    if (!rules.some((r) => r.id === ruleId)) {
+      throw new Error(`No forwarding rule with id ${ruleId} on this account. Use email_list_forward_rules to see the ids.`);
+    }
+    await this.deleteBlockRule(ruleId);
   }
 
   /**

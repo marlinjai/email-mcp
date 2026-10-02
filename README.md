@@ -117,7 +117,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 # Optionally enter SMTP host and port for sending
 ```
 
-## Available Tools (32)
+## Available Tools (36)
 
 ### Account Management (4)
 
@@ -163,13 +163,14 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 | `email_get_labels` | List all labels with counts (Gmail only) |
 | `email_get_categories` | List all categories (Outlook only) |
 
-### Batch Operations (3)
+### Batch Operations (4)
 
 | Tool | Description |
 |------|-------------|
 | `email_batch_delete` | Delete multiple emails at once (up to 1000 for Gmail, batches of 20 for Outlook, UID ranges for IMAP) |
 | `email_batch_move` | Move multiple emails to a folder in a single call |
 | `email_batch_mark` | Mark multiple emails read/unread, starred, or flagged at once |
+| `email_batch_label` | Add or remove labels on multiple emails at once (native batch call on Gmail, one by one elsewhere) |
 
 All batch tools accept a `sourceFolder` parameter for IMAP/iCloud and include a sequential fallback for maximum compatibility.
 
@@ -184,6 +185,32 @@ All batch tools accept a `sourceFolder` parameter for IMAP/iCloud and include a 
 | `email_delete_block_rule` | Delete a standing block rule — use to undo a rule that turned out too broad |
 
 Gmail and Outlook only for the rule tools; `email_report_spam`/`email_batch_report_spam` work on every provider (iCloud/IMAP fall back to a best-effort move into the account's Junk-typed folder, with no vendor ML training signal since generic IMAP has none to train).
+
+### Forwarding Rules (3)
+
+| Tool | Description |
+|------|-------------|
+| `email_create_forward_rule` | Create a standing rule that forwards future mail matching a pattern (sender domain/address, subject, or header content) to another address, for example vendor invoices to a bookkeeping address. The original stays in the inbox unless `keepInInbox` is `false`. Creating the same rule twice returns the existing one |
+| `email_list_forward_rules` | List every rule on an account that forwards mail elsewhere, including rules made by hand in Gmail or Outlook: an audit of where mail is being sent |
+| `email_delete_forward_rule` | Delete a forwarding rule by id |
+
+Gmail and Outlook only. iCloud and generic IMAP have no server-side rule mechanism; set the rule in the provider's own settings there.
+
+**Forwarding is off until you allow a target.** A standing forward rule copies future mail out of your mailbox, and an assistant that reads mail can be asked to create one by the mail it reads. So `email_create_forward_rule` only accepts addresses you listed yourself in `EMAIL_MCP_FORWARD_ALLOWLIST` (comma-separated), in the environment of the server. No tool can change that list:
+
+```json
+{
+  "mcpServers": {
+    "email": {
+      "command": "npx",
+      "args": ["@marlinjai/email-mcp"],
+      "env": { "EMAIL_MCP_FORWARD_ALLOWLIST": "expenses@example.com" }
+    }
+  }
+}
+```
+
+On Gmail the target must also be a forwarding address of the account: add it once under Gmail Settings, "Forwarding and POP/IMAP", "Add a forwarding address", and confirm the email Google sends to it. Outlook needs no such step, which is why the allowlist exists. Outlook accounts authenticated before the block-rule tools existed need to re-run the setup wizard once, as for those tools.
 
 ## Usage with Claude Code
 

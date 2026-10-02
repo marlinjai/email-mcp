@@ -879,6 +879,18 @@ describe('OutlookAdapter', () => {
         { id: 'r2', matchType: 'headerContains', value: 'in2.getdrip.com', action: 'moveToJunk', createdAt: '' },
       ]);
     });
+
+    it('leaves forwarding rules out: they are forward rules, not block rules', async () => {
+      await connectAdapter();
+      setRules([
+        { id: 'r1', conditions: { senderContains: ['bad.com'] }, actions: { delete: true } },
+        { id: 'r2', conditions: { senderContains: ['vendor.com'] }, actions: { forwardTo: [{ emailAddress: { address: 'expenses@example.com' } }] } },
+        { id: 'r3', conditions: { senderContains: ['other.com'] }, actions: { redirectTo: [{ emailAddress: { address: 'books@example.com' } }] } },
+      ]);
+
+      const rules = await adapter.listBlockRules();
+      expect(rules.map((r) => r.id)).toEqual(['r1']);
+    });
   });
 
   describe('deleteBlockRule', () => {
@@ -890,6 +902,122 @@ describe('OutlookAdapter', () => {
       await adapter.deleteBlockRule('rule-1');
 
       expect(deleteReq.delete).toHaveBeenCalled();
+    });
+  });
+
+  function setRules(value: unknown[], created: unknown = { id: 'rule-new' }) {
+    const rulesReq = createMockGraphRequest();
+    rulesReq.get = vi.fn().mockResolvedValue({ value });
+    rulesReq.post = vi.fn().mockResolvedValue(created);
+    mockApiRequests.set('/me/mailFolders/inbox/messageRules', rulesReq);
+    return rulesReq;
+  }
+
+  describe('createForwardRule', () => {
+    const rule = { matchType: 'senderDomain' as const, value: 'vendor.com', forwardTo: 'expenses@example.com', keepInInbox: true };
+
+    it('creates a rule that forwards and leaves the original in the inbox', async () => {
+      await connectAdapter();
+      const rulesReq = setRules([{ id: 'r1', conditions: { senderContains: ['bad.com'] }, actions: { delete: true } }]);
+
+      const result = await adapter.createForwardRule(rule);
+
+      expect(rulesReq.post).toHaveBeenCalledWith({
+        displayName: 'email-mcp: forward senderDomain "vendor.com" to expenses@example.com',
+        sequence: 2,
+        isEnabled: true,
+        conditions: { senderContains: ['vendor.com'] },
+        actions: { forwardTo: [{ emailAddress: { address: 'expenses@example.com' } }] },
+      });
+      expect(result).toEqual({ id: 'rule-new' });
+    });
+
+    it('also moves the original to the archive when keepInInbox is false', async () => {
+      await connectAdapter();
+      const rulesReq = setRules([]);
+
+      await adapter.createForwardRule({ ...rule, keepInInbox: false });
+
+      expect(rulesReq.post).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actions: {
+            forwardTo: [{ emailAddress: { address: 'expenses@example.com' } }],
+            moveToFolder: 'archive',
+            stopProcessingRules: true,
+          },
+        }),
+      );
+    });
+
+    it('returns the existing rule when the same match already forwards to the same address', async () => {
+      await connectAdapter();
+      const rulesReq = setRules([
+        { id: 'r7', conditions: { senderContains: ['vendor.com'] }, actions: { forwardTo: [{ emailAddress: { address: 'Expenses@Example.com' } }] } },
+      ]);
+
+      const result = await adapter.createForwardRule(rule);
+
+      expect(result).toEqual({ id: 'r7', alreadyExisted: true });
+      expect(rulesReq.post).not.toHaveBeenCalled();
+    });
+
+    it('creates a new rule when the match is the same but the target differs', async () => {
+      await connectAdapter();
+      const rulesReq = setRules([
+        { id: 'r7', conditions: { senderContains: ['vendor.com'] }, actions: { forwardTo: [{ emailAddress: { address: 'books@example.com' } }] } },
+      ]);
+
+      const result = await adapter.createForwardRule(rule);
+
+      expect(result).toEqual({ id: 'rule-new' });
+      expect(rulesReq.post).toHaveBeenCalled();
+    });
+  });
+
+  describe('listForwardRules', () => {
+    it('returns only rules that forward or redirect, with targets and inbox behaviour', async () => {
+      await connectAdapter();
+      setRules([
+        { id: 'r1', conditions: { senderContains: ['bad.com'] }, actions: { delete: true } },
+        { id: 'r2', conditions: { senderContains: ['vendor.com'] }, actions: { forwardTo: [{ emailAddress: { address: 'expenses@example.com' } }] } },
+        { id: 'r3', conditions: { subjectContains: ['Invoice'] }, actions: { redirectTo: [{ emailAddress: { address: 'books@example.com' } }], moveToFolder: 'archive' } },
+      ]);
+
+      expect(await adapter.listForwardRules()).toEqual([
+        { id: 'r2', matchType: 'senderDomain', value: 'vendor.com', forwardTo: 'expenses@example.com', keepInInbox: true, createdAt: '' },
+        { id: 'r3', matchType: 'subjectContains', value: 'Invoice', forwardTo: 'books@example.com', keepInInbox: false, createdAt: '' },
+      ]);
+    });
+
+    it('is empty for an account without rules', async () => {
+      await connectAdapter();
+      setRules([]);
+      expect(await adapter.listForwardRules()).toEqual([]);
+    });
+  });
+
+  describe('deleteForwardRule', () => {
+    it('deletes a forwarding rule by id', async () => {
+      await connectAdapter();
+      setRules([
+        { id: 'rule-2', conditions: { senderContains: ['vendor.com'] }, actions: { forwardTo: [{ emailAddress: { address: 'expenses@example.com' } }] } },
+      ]);
+      const deleteReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/mailFolders/inbox/messageRules/rule-2', deleteReq);
+
+      await adapter.deleteForwardRule('rule-2');
+
+      expect(deleteReq.delete).toHaveBeenCalled();
+    });
+
+    it('refuses an id that is not a forwarding rule, so a block rule is not removed by mistake', async () => {
+      await connectAdapter();
+      setRules([{ id: 'rule-1', conditions: { senderContains: ['bad.com'] }, actions: { delete: true } }]);
+      const deleteReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/mailFolders/inbox/messageRules/rule-1', deleteReq);
+
+      await expect(adapter.deleteForwardRule('rule-1')).rejects.toThrow(/No forwarding rule with id rule-1/);
+      expect(deleteReq.delete).not.toHaveBeenCalled();
     });
   });
 });
