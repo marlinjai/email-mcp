@@ -672,7 +672,9 @@ export class GmailAdapter implements EmailProvider {
     }
 
     const existing = (await this.listForwardRules()).find(
-      (r) => r.matchType === rule.matchType && r.value === rule.value && r.forwardTo.toLowerCase() === target,
+      (r) => r.matchType === rule.matchType
+        && r.value.toLowerCase() === rule.value.toLowerCase()
+        && r.forwardTo.toLowerCase() === target,
     );
     if (existing) return { id: existing.id, alreadyExisted: true };
 

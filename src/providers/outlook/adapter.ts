@@ -601,7 +601,7 @@ export class OutlookAdapter implements EmailProvider {
     const existing = all.find((r: any) => {
       const read = this.readConditions(r.conditions);
       // senderDomain and senderAddress are the same Graph condition, so compare the value only.
-      const sameMatch = read.value === rule.value
+      const sameMatch = read.value.toLowerCase() === rule.value.toLowerCase()
         && (read.matchType === rule.matchType || (read.matchType.startsWith('sender') && rule.matchType.startsWith('sender')));
       return sameMatch && OutlookAdapter.forwardTargets(r.actions).some((a) => a.toLowerCase() === target);
     });
