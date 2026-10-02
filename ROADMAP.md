@@ -15,8 +15,9 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       bold word and the link intact (no "Plain text mode"); the test draft was discarded (2026-09-27)
 - [ ] Forwarding rules ([plan](docs/plans/2026-10-02-forward-rules.md)): the three tools
       (`email_create_forward_rule`, `email_list_forward_rules`, `email_delete_forward_rule`)
-      and the `EMAIL_MCP_FORWARD_ALLOWLIST` guard are built and tested against mocks. Open:
-      release 1.9.0, then a live check on a real Gmail and a real Outlook account (create,
+      and the `EMAIL_MCP_FORWARD_ALLOWLIST` guard are built and tested against mocks. Release
+      1.9.0 is prepared (changelog and version bumped); the tag v1.9.0 and the npm publish follow
+      the merge, and this line stays open until npm latest is 1.9.0. Also open: a live check on a real Gmail and a real Outlook account (create,
       list, see the rule in the provider's settings, delete). For the first real use Marlin
       adds and confirms expenses@marlinjai.com once in Gmail under Settings, "Forwarding and
       POP/IMAP", and sets `EMAIL_MCP_FORWARD_ALLOWLIST` in his MCP client configuration. The
@@ -64,7 +65,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       documented but unobserved (that account had no members), so the first membership is the
       real test: a mismatch turns the deploy run red and the bar keeps the last amount.
       The setup wizard's donation line
-      ships with the next npm release. No grant application, decided by Marlin on 2026-10-01 after a fit
+      is in the package since 1.9.0. No grant application, decided by Marlin on 2026-10-01 after a fit
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
       open fund, Restack, states "AI-related projects are not within scope", and the Prototype
       Fund pays for six months of near full-time work from 2027-06-01 at about a 9 percent

@@ -14,7 +14,7 @@ import { registerForwardingTools } from './tools/forwarding.js';
  * together. (A runtime read of package.json is not used because esbuild
  * bundles entry points at different depths under dist/.)
  */
-export const SERVER_VERSION = '1.8.1';
+export const SERVER_VERSION = '1.9.0';
 
 export interface ServerResult {
   server: McpServer;
