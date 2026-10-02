@@ -15,14 +15,17 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       bold word and the link intact (no "Plain text mode"); the test draft was discarded (2026-09-27)
 - [ ] Forwarding rules ([plan](docs/plans/2026-10-02-forward-rules.md)): the three tools
       (`email_create_forward_rule`, `email_list_forward_rules`, `email_delete_forward_rule`)
-      and the `EMAIL_MCP_FORWARD_ALLOWLIST` guard are built and tested against mocks. Release
-      1.9.0 is prepared (changelog and version bumped); the tag v1.9.0 and the npm publish follow
-      the merge, and this line stays open until npm latest is 1.9.0. Also open: a live check on a real Gmail and a real Outlook account (create,
-      list, see the rule in the provider's settings, delete). For the first real use Marlin
-      adds and confirms expenses@marlinjai.com once in Gmail under Settings, "Forwarding and
-      POP/IMAP", and sets `EMAIL_MCP_FORWARD_ALLOWLIST` in his MCP client configuration. The
-      sentence telling Google about the new use of `gmail.settings.basic` is in the reply
-      drafted in his Gmail (2026-10-02)
+      and the `EMAIL_MCP_FORWARD_ALLOWLIST` guard are built and tested against mocks, and
+      released: npm latest is 1.9.0 since 2026-10-02 (tag v1.9.0, GitHub release). Both
+      prerequisites for Marlin's first real use are in place since 2026-10-02:
+      expenses@marlinjai.com is a confirmed forwarding address of the configured Gmail account
+      (whole-mailbox forwarding stays disabled), and `EMAIL_MCP_FORWARD_ALLOWLIST` is set in the
+      Infisical Dotfiles project (env dev, path /), which the `cc.sh` launcher injects into
+      Claude Code, so the email server inherits it after a restart. Open: the live check on a
+      real Gmail and a real Outlook account (create, list, see the rule in the provider's
+      settings, delete); the first Gmail run is the Anthropic invoice rule. The sentence
+      telling Google about the new use of `gmail.settings.basic` is in the reply drafted
+      inside the verification thread in his Gmail, unsent (2026-10-02)
 - [ ] Outgoing attachments: the five MCP tools (`email_send`, `email_draft_create`,
       `email_draft_update`, `email_reply`, and `email_forward`) expose no `attachments` input, so an
       invoice PDF cannot be sent or drafted through the MCP (hit 2026-09-25 drafting Scheunerei
@@ -57,10 +60,13 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       that day as a Lumitra business expense, and the renewal is decided again in a year; no
       paid tier, because gating the shared client needs a server this project does not have.
       The homepage shows a funding bar rendered by `scripts/funding.mjs` in the site deploy
-      workflow (every deploy and daily). It shows the goal without an amount until Marlin adds
-      two repository secrets: `GH_SPONSORS_TOKEN` (classic personal access token of his
+      workflow (every deploy and daily). It shows the goal without an amount until two
+      repository secrets exist: `GH_SPONSORS_TOKEN` (classic personal access token of his
       account, scope `read:user`) and `BMC_TOKEN` (read-only token from the Buy Me a Coffee
-      developer dashboard). The Buy Me a Coffee supporter fields match what the open source client
+      developer dashboard). Their home is the Infisical Dotfiles project (env dev, path
+      `/email-mcp`, placeholders created 2026-10-02): Marlin replaces the two placeholders in
+      the Infisical interface, then the values are piped from there into the repository
+      secrets with `gh secret set`, without being printed. The Buy Me a Coffee supporter fields match what the open source client
       mayeu20/buymeacoffee-mcp observed live in September 2026; the membership fields are
       documented but unobserved (that account had no members), so the first membership is the
       real test: a mismatch turns the deploy run red and the bar keeps the last amount.
