@@ -90,6 +90,11 @@ describe('sumBmcMemberships', () => {
     expect(sumBmcMemberships([cancelled], new Date('2027-02-01T00:00:00Z')).cents).toBe(1400);
   });
 
+  it('rejects an unreadable cancellation date instead of counting as active', () => {
+    const broken = { ...monthly, subscription_cancelled_on: 'not a date' };
+    expect(() => sumBmcMemberships([broken], new Date('2026-12-01T00:00:00Z'))).toThrow(/cancellation date/);
+  });
+
   it('only counts payments from the campaign start on', () => {
     const older = { ...monthly, subscription_created_on: '2026-08-20 10:00:00' };
     // Charged 20 August, 20 September, 20 October: only October is in the campaign.
@@ -117,10 +122,13 @@ describe('buildState', () => {
     expect(state.sources).toEqual({ githubSponsors: 'ok', buyMeACoffee: 'not-configured' });
   });
 
-  it('subtracts the baseline of earlier years and never goes below zero', () => {
-    const config = { ...CONFIG, baselineCents: 67500 };
+  it('subtracts the GitHub baseline from GitHub only and never goes below zero', () => {
+    const config = { ...CONFIG, githubBaselineCents: 67500 };
     expect(buildState({ github: ok(70000, 9), bmc: ok(0, 0), now: during, config }).collectedCents).toBe(2500);
     expect(buildState({ github: ok(100, 1), bmc: ok(0, 0), now: during, config }).collectedCents).toBe(0);
+    expect(buildState({ github: ok(70000, 9), bmc: ok(1500, 1), now: during, config }).collectedCents).toBe(4000);
+    expect(buildState({ github: ok(100, 1), bmc: ok(1500, 1), now: during, config }).collectedCents).toBe(1500);
+    expect(buildState({ github: notConfigured, bmc: ok(1500, 1), now: during, config }).collectedCents).toBe(1500);
   });
 });
 

@@ -25,9 +25,12 @@ export const CONFIG = {
   // The assessment has to start by then; the maintainer pays what is missing.
   backstopDate: '2026-11-02',
   auditDue: '2026-12-29',
-  // Subtracted from the sum. Raise it at each yearly renewal to start the next
-  // year's bar from zero without losing the history on the platforms.
-  baselineCents: 0,
+  // GitHub reports lifetime payments with no dates, so what was paid before the
+  // campaign is subtracted from the GitHub total only (Buy Me a Coffee is
+  // filtered by date instead). Set it to GitHub's lifetime total at the start
+  // of the campaign, and raise it at each yearly renewal to start the next
+  // year's bar from zero without losing the history on the platform.
+  githubBaselineCents: 0,
   githubLogin: 'marlinjai',
   // The goal is in US dollars because the lab's invoice is. Donations in
   // another currency are converted with these fixed rates (ECB reference rate
@@ -139,6 +142,7 @@ export function sumBmcMemberships(subscriptions, now, config = CONFIG) {
     const created = parseUtc(sub.subscription_created_on);
     const campaignStart = new Date(`${config.campaignStart}T00:00:00Z`);
     const cancelled = sub.subscription_cancelled_on ? parseUtc(sub.subscription_cancelled_on) : null;
+    if (cancelled && Number.isNaN(cancelled.getTime())) throw new Error('Unexpected response: unreadable membership cancellation date');
     const until = cancelled && cancelled < now ? cancelled : now;
     if (Number.isNaN(created.getTime())) throw new Error('Unexpected response: unreadable membership start date');
     if (until < campaignStart || until < created) continue;
@@ -175,9 +179,12 @@ export function phaseFor(collectedCents, now, config = CONFIG) {
  */
 export function buildState({ github, bmc, now, config = CONFIG }) {
   const connected = [github, bmc].filter((s) => s.status === 'ok');
+  const campaignCents = (source) => (source === github
+    ? Math.max(0, source.cents - config.githubBaselineCents)
+    : source.cents);
   const collectedCents = connected.length === 0
     ? null
-    : Math.max(0, connected.reduce((sum, s) => sum + s.cents, 0) - config.baselineCents);
+    : connected.reduce((sum, s) => sum + campaignCents(s), 0);
   const supporters = connected.reduce((sum, s) => sum + s.supporters, 0);
   return {
     goalCents: config.goalCents,
