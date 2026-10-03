@@ -24,7 +24,7 @@
 
 <main class="legal">
   <h1>Privacy policy</h1>
-  <p class="updated">Last updated: 2 October 2026</p>
+  <p class="updated">Last updated: 3 October 2026</p>
 
   <p><strong>The short version: email-mcp runs on your own machine and has no server of
   its own.</strong> It is an MCP (Model Context Protocol) server you install and run
@@ -121,6 +121,11 @@
     provider on demand and passed straight to your AI assistant; email-mcp keeps no copy,
     cache or index of them on disk. The only email data it writes to disk is an
     attachment you explicitly ask it to save, described above.</li>
+    <li><strong>Local files are read only to attach them, and only from one folder.</strong>
+    When you ask your assistant to attach a file to an outgoing message, email-mcp reads it
+    from the folder you named in the <code>EMAIL_MCP_ATTACHMENTS_DIR</code> setting and from
+    nowhere else. Without that setting it reads no local file at all. No tool of email-mcp
+    can change the setting.</li>
   </ul>
 
   <h3>Encryption in transit</h3>

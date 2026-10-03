@@ -575,6 +575,35 @@ describe('OutlookAdapter', () => {
         }),
       );
     });
+
+    it('refuses attachments that total more than 3 MB, on a draft and on send', async () => {
+      const draftRequest = createMockGraphRequest({ id: 'draft-att' });
+      mockApiRequests.set('/me/messages', draftRequest);
+      const sendRequest = createMockGraphRequest({});
+      mockApiRequests.set('/me/sendMail', sendRequest);
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+      const twoMb = Buffer.alloc(2 * 1024 * 1024);
+      const message = {
+        to: [{ email: 'bob@test.com' }],
+        subject: 'Two files',
+        body: { text: 'Attached' },
+        attachments: [
+          { filename: 'a.bin', content: twoMb, contentType: 'application/octet-stream' },
+          { filename: 'b.bin', content: twoMb, contentType: 'application/octet-stream' },
+        ],
+      };
+
+      await expect(adapter.createDraft(message)).rejects.toThrow(/up to 3\.0 MB of attachments per message.*4\.0 MB/);
+      await expect(adapter.sendEmail(message)).rejects.toThrow(/up to 3\.0 MB of attachments per message/);
+      expect(draftRequest.post).not.toHaveBeenCalled();
+      expect(sendRequest.post).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateDraft', () => {
@@ -629,6 +658,89 @@ describe('OutlookAdapter', () => {
 
       expect(deleteRequest.delete).toHaveBeenCalled();
       expect(listRequest.post).toHaveBeenCalledWith(expect.objectContaining({ name: 'new.pdf' }));
+      // New files go up before the old ones are removed.
+      expect((listRequest.post as any).mock.invocationCallOrder[0]).toBeLessThan(
+        (deleteRequest.delete as any).mock.invocationCallOrder[0],
+      );
+    });
+
+    const outlookAccount = {
+      id: 'outlook-1',
+      name: 'Test',
+      provider: 'outlook' as const,
+      email: 'test@outlook.com',
+      oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+    };
+    const draft = { to: [{ email: 'bob@test.com' }], subject: 'Updated Subject', body: { text: 'Updated body' } };
+
+    it('keeps the old files when uploading a new one fails', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const listRequest = createMockGraphRequest({ value: [{ id: 'old-1' }] });
+      listRequest.post = vi.fn().mockRejectedValue(new Error('upload failed'));
+      mockApiRequests.set('/me/messages/draft-123/attachments', listRequest);
+      const deleteRequest = createMockGraphRequest();
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-1', deleteRequest);
+      await adapter.connect(outlookAccount);
+
+      await expect(
+        adapter.updateDraft('draft-123', {
+          ...draft,
+          attachments: [{ filename: 'new.pdf', content: Buffer.from('new'), contentType: 'application/pdf' }],
+        }),
+      ).rejects.toThrow('upload failed');
+      expect(deleteRequest.delete).not.toHaveBeenCalled();
+    });
+
+    it('removes every file when given an empty list', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const listRequest = createMockGraphRequest({ value: [{ id: 'old-1' }, { id: 'old-2' }] });
+      mockApiRequests.set('/me/messages/draft-123/attachments', listRequest);
+      const delete1 = createMockGraphRequest();
+      const delete2 = createMockGraphRequest();
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-1', delete1);
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-2', delete2);
+      await adapter.connect(outlookAccount);
+
+      await adapter.updateDraft('draft-123', { ...draft, attachments: [] });
+
+      expect(listRequest.post).not.toHaveBeenCalled();
+      expect(delete1.delete).toHaveBeenCalled();
+      expect(delete2.delete).toHaveBeenCalled();
+    });
+
+    it('removes old files from every page of the list', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const nextLink = 'https://graph.microsoft.com/v1.0/me/messages/draft-123/attachments?$skip=1';
+      const listRequest = createMockGraphRequest({ value: [{ id: 'old-1' }], '@odata.nextLink': nextLink });
+      mockApiRequests.set('/me/messages/draft-123/attachments', listRequest);
+      mockApiRequests.set(nextLink, createMockGraphRequest({ value: [{ id: 'old-2' }] }));
+      const delete1 = createMockGraphRequest();
+      const delete2 = createMockGraphRequest();
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-1', delete1);
+      mockApiRequests.set('/me/messages/draft-123/attachments/old-2', delete2);
+      await adapter.connect(outlookAccount);
+
+      await adapter.updateDraft('draft-123', {
+        ...draft,
+        attachments: [{ filename: 'new.pdf', content: Buffer.from('new'), contentType: 'application/pdf' }],
+      });
+
+      expect(delete1.delete).toHaveBeenCalled();
+      expect(delete2.delete).toHaveBeenCalled();
+    });
+
+    it('refuses a file over 3 MB before touching the draft', async () => {
+      const patchRequest = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/draft-123', patchRequest);
+      await adapter.connect(outlookAccount);
+
+      await expect(
+        adapter.updateDraft('draft-123', {
+          ...draft,
+          attachments: [{ filename: 'big.zip', content: Buffer.alloc(3 * 1024 * 1024 + 1), contentType: 'application/zip' }],
+        }),
+      ).rejects.toThrow(/Outlook accepts attachments up to 3\.0 MB.*big\.zip/);
+      expect(patchRequest.patch).not.toHaveBeenCalled();
     });
 
     it('leaves attachments alone when none are given', async () => {

@@ -24,6 +24,34 @@ const toGraphAttachment = (att: { filename: string; contentType: string; content
   contentBytes: att.content.toString('base64'),
 });
 
+// Graph takes a file attachment inline only below 3 MB, and a whole request
+// only below 4 MB; anything larger needs an upload session, which this
+// adapter does not implement. Refusing here gives a clear message instead of
+// Graph's 413 after the upload.
+export const OUTLOOK_MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+
+type OutgoingAttachments = NonNullable<SendEmailParams['attachments']>;
+
+function megabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** `inOneRequest`: the attachments travel inside a single Graph request (send, draft create). */
+function assertOutlookAttachmentSizes(attachments: OutgoingAttachments | undefined, inOneRequest: boolean): void {
+  if (!attachments?.length) return;
+  const limit = megabytes(OUTLOOK_MAX_ATTACHMENT_BYTES);
+  const hint = 'Larger files need an upload session, which email-mcp does not implement for Outlook yet.';
+  for (const att of attachments) {
+    if (att.content.length > OUTLOOK_MAX_ATTACHMENT_BYTES) {
+      throw new Error(`Outlook accepts attachments up to ${limit} through email-mcp; ${att.filename} is ${megabytes(att.content.length)}. ${hint}`);
+    }
+  }
+  const total = attachments.reduce((sum, att) => sum + att.content.length, 0);
+  if (inOneRequest && total > OUTLOOK_MAX_ATTACHMENT_BYTES) {
+    throw new Error(`Outlook accepts up to ${limit} of attachments per message through email-mcp; these total ${megabytes(total)}. ${hint}`);
+  }
+}
+
 export class OutlookAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Outlook;
   private client: ReturnType<typeof Client.init> | null = null;
@@ -218,6 +246,7 @@ export class OutlookAdapter implements EmailProvider {
 
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     const client = this.ensureClient();
+    assertOutlookAttachmentSizes(params.attachments, true);
     const message = this.buildGraphMessage(params);
 
     const payload: any = { message };
@@ -232,6 +261,7 @@ export class OutlookAdapter implements EmailProvider {
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
+    assertOutlookAttachmentSizes(params.attachments, true);
     const message = this.buildGraphMessage(params);
     if (params.attachments?.length) {
       message.attachments = params.attachments.map(toGraphAttachment);
@@ -243,20 +273,33 @@ export class OutlookAdapter implements EmailProvider {
 
   async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
+    assertOutlookAttachmentSizes(params.attachments, false);
     const message = this.buildGraphMessage(params);
 
     await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(message);
 
-    // PATCH cannot change attachments, so replace them explicitly when new ones
-    // are given. Omitted attachments leave the draft's existing files in place.
-    if (params.attachments?.length) {
+    // PATCH cannot change attachments. `attachments` omitted leaves the
+    // draft's files alone; a list (an empty one included) replaces them.
+    if (params.attachments) {
       const attachmentsPath = `/me/messages/${encodeURIComponent(draftId)}/attachments`;
-      const existing = await client.api(attachmentsPath).select('id').get();
-      for (const att of existing.value || []) {
-        await client.api(`${attachmentsPath}/${encodeURIComponent(att.id)}`).delete();
+
+      // Every page of the files that are there now, before anything changes.
+      const previousIds: string[] = [];
+      let page = await client.api(attachmentsPath).select('id').get();
+      for (let i = 0; i < 100; i += 1) {
+        previousIds.push(...(page.value || []).map((att: any) => att.id));
+        const next = page['@odata.nextLink'];
+        if (!next) break;
+        page = await client.api(next).get();
       }
+
+      // Add first, delete after: if an upload fails the draft still has its
+      // old files, plus whichever new ones made it, never none.
       for (const att of params.attachments) {
         await client.api(attachmentsPath).post(toGraphAttachment(att));
+      }
+      for (const id of previousIds) {
+        await client.api(`${attachmentsPath}/${encodeURIComponent(id)}`).delete();
       }
     }
     return { id: draftId };

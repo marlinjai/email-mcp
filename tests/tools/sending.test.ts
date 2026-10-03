@@ -479,5 +479,36 @@ describe('Sending tools', () => {
       expect(JSON.parse(result.content[0].text).error).toMatch(/requires a filename/);
       expect(mockProvider.sendEmail).not.toHaveBeenCalled();
     });
+
+    it('refuses a file path on every sending tool while no attachments folder is set', async () => {
+      const saved = process.env.EMAIL_MCP_ATTACHMENTS_DIR;
+      delete process.env.EMAIL_MCP_ATTACHMENTS_DIR;
+      try {
+        const byPath = [{ path: '/etc/hosts' }];
+        const calls: Array<[string, Record<string, unknown>]> = [
+          ['email_send', { accountId: 'acct-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'B' }, attachments: byPath }],
+          ['email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' }, attachments: byPath }],
+          ['email_forward', { accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'dave@example.com' }], attachments: byPath }],
+          ['email_draft_create', { accountId: 'acct-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'B' }, attachments: byPath }],
+          ['email_draft_update', { accountId: 'acct-1', draftId: 'draft-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'B' }, attachments: byPath }],
+        ];
+        for (const [tool, args] of calls) {
+          const result = await callTool(server, tool, args);
+          expect(JSON.parse(result.content[0].text).error, tool).toMatch(/switched off: EMAIL_MCP_ATTACHMENTS_DIR is not set/);
+        }
+        expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+        expect(mockProvider.createDraft).not.toHaveBeenCalled();
+        expect(mockProvider.updateDraft).not.toHaveBeenCalled();
+      } finally {
+        if (saved !== undefined) process.env.EMAIL_MCP_ATTACHMENTS_DIR = saved;
+      }
+    });
+
+    it('email_draft_update passes an empty list through, so the draft loses its files', async () => {
+      await callTool(server, 'email_draft_update', {
+        accountId: 'acct-1', draftId: 'draft-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'B' }, attachments: [],
+      });
+      expect(mockProvider.updateDraft).toHaveBeenCalledWith('draft-1', expect.objectContaining({ attachments: [] }), undefined);
+    });
   });
 });

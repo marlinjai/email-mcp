@@ -26,15 +26,19 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       settings, delete); the first Gmail run is the Anthropic invoice rule. Google was told
       about the new use of `gmail.settings.basic` in the reply Marlin sent on the
       verification thread on 2026-10-03 (2026-10-03)
-- [ ] Outgoing attachments: the five MCP tools (`email_send`, `email_draft_create`,
-      `email_draft_update`, `email_reply`, and `email_forward`) expose no `attachments` input, so an
-      invoice PDF cannot be sent or drafted through the MCP (hit 2026-09-25 drafting Scheunerei
-      Rechnung Nr. 59, fell back to the `gws` CLI). Provider support: Gmail (send and drafts),
-      IMAP and iCloud drafts, IMAP/SMTP `email_send` and Outlook `email_send` already consume
-      `SendEmailParams.attachments` (the shared MIME builder in `src/providers/mime.ts` since
-      2026-09-27); only the Outlook draft paths still discard them. Expose an `attachments` input
-      (local path or base64 plus filename and MIME type), complete the Outlook draft path, add a
-      size cap, and run a live test per provider (2026-09-27)
+- [ ] Outgoing attachments (pull request #20 by @jonboy648, reworked onto main): the five
+      sending tools take an `attachments` input (a file from the folder named in
+      `EMAIL_MCP_ATTACHMENTS_DIR`, off when unset, or base64 content with a filename), capped at
+      25 MB, and the Outlook draft paths carry attachments. Decided by Marlin on 2026-10-03: files
+      only from that one folder, because a path chosen by the assistant could otherwise mail out
+      any local file. Open: a live test per provider (Gmail, Outlook, iCloud or IMAP: send and
+      draft with a PDF), and Marlin sets `EMAIL_MCP_ATTACHMENTS_DIR` for his own use (Infisical
+      Dotfiles project, like the forwarding allowlist). Also open: on Gmail and IMAP
+      `email_draft_update` rewrites the whole message, so a draft's existing files are dropped
+      unless they are passed again (Outlook keeps them); the tool description says so, the fix
+      is to carry them over. Outlook is limited to 3 MB per message
+      with a clear error; upload sessions for larger files are not built, by decision of
+      2026-10-03 (2026-10-03)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)
