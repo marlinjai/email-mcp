@@ -23,9 +23,9 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       Infisical Dotfiles project (env dev, path /), which the `cc.sh` launcher injects into
       Claude Code, so the email server inherits it after a restart. Open: the live check on a
       real Gmail and a real Outlook account (create, list, see the rule in the provider's
-      settings, delete); the first Gmail run is the Anthropic invoice rule. The sentence
-      telling Google about the new use of `gmail.settings.basic` is in the reply drafted
-      inside the verification thread in his Gmail, unsent (2026-10-02)
+      settings, delete); the first Gmail run is the Anthropic invoice rule. Google was told
+      about the new use of `gmail.settings.basic` in the reply Marlin sent on the
+      verification thread on 2026-10-03 (2026-10-03)
 - [ ] Outgoing attachments: the five MCP tools (`email_send`, `email_draft_create`,
       `email_draft_update`, `email_reply`, and `email_forward`) expose no `attachments` input, so an
       invoice PDF cannot be sent or drafted through the MCP (hit 2026-09-25 drafting Scheunerei
@@ -49,27 +49,33 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       "Developer credentials may not be embedded in open source projects", and the shared
       client ships in this package; Google's reviewers have had the repository link throughout
       and have not raised it. All three scopes are on the restricted list, so the wizard's
-      Restricted mode does not avoid it. Next steps, in order: (1) Marlin sends the reply
-      drafted in Gmail on 2026-10-01, which describes the local-only data flow and asks whether
-      the assessment applies, since Google's documentation requires it for an app that "has the
-      ability to access data from or through a third-party server"; (2) if Google says it
-      applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
+      Restricted mode does not avoid it. Marlin's reply of 2026-10-03 on the
+      verification thread describes the local-only data flow and asks whether the assessment
+      applies, since Google's documentation requires it for an app that "has the ability to
+      access data from or through a third-party server"; it also asks whether any programme
+      covers the lab fee for open source projects. Waiting on Google's answer. Next step: if
+      Google says it applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
       weeks, and a deadline extension is requested from the lab, not from Google). Funding, decided by
       Marlin on 2026-10-01 and 2026-10-02: donations are collected toward the 675 US dollars
       until 2026-11-02 (GitHub Sponsors and Buy Me a Coffee), Marlin pays what is missing on
       that day as a Lumitra business expense, and the renewal is decided again in a year; no
       paid tier, because gating the shared client needs a server this project does not have.
       The homepage shows a funding bar rendered by `scripts/funding.mjs` in the site deploy
-      workflow (every deploy and daily). It shows the goal without an amount until two
-      repository secrets exist: `GH_SPONSORS_TOKEN` (classic personal access token of his
-      account, scope `read:user`) and `BMC_TOKEN` (read-only token from the Buy Me a Coffee
-      developer dashboard). Their home is the Infisical Dotfiles project (env dev, path
-      `/email-mcp`, placeholders created 2026-10-02): Marlin replaces the two placeholders in
-      the Infisical interface, then the values are piped from there into the repository
-      secrets with `gh secret set`, without being printed. The Buy Me a Coffee supporter fields match what the open source client
-      mayeu20/buymeacoffee-mcp observed live in September 2026; the membership fields are
-      documented but unobserved (that account had no members), so the first membership is the
-      real test: a mismatch turns the deploy run red and the bar keeps the last amount.
+      workflow (every deploy and daily). The bar is live and connected to both
+      platforms since 2026-10-03 (first reading: 0 of 675 US dollars, 0 supporters). It reads
+      two repository secrets: `GH_SPONSORS_TOKEN` (classic personal access token of Marlin's
+      account, scope `read:user`) and `BMC_TOKEN` (read-only token "email mcp" from the Buy Me
+      a Coffee developer dashboard). Their home is the Infisical Dotfiles project (env dev,
+      path `/email-mcp`); the repository secrets are copies, so a rotated token is changed in
+      Infisical first and copied to the repository secret again. Both tokens were checked
+      against the real services: GitHub answers as marlinjai, Buy Me a Coffee answers
+      `{"error":"No supporters"}` and `{"error":"No subscriptions"}` with HTTP 200, the empty
+      case the script handles. The Buy Me a Coffee supporter fields match what the open source
+      client mayeu20/buymeacoffee-mcp observed live in September 2026; the membership fields
+      are documented but unobserved (neither account had members), so the first membership is
+      the real test: a mismatch turns the deploy run red and the bar keeps the last amount.
+      If the developer dashboard answers "400 Request Header Or Cookie Too Large", delete the
+      analytics cookies for buymeacoffee.com in that browser.
       The setup wizard's donation line
       is in the package since 1.9.0. No grant application, decided by Marlin on 2026-10-01 after a fit
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
@@ -79,7 +85,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
       approves: close GitHub issue #1 ("unverified app"), update that site section, and
       re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
-      (2026-10-02)
+      (2026-10-03)
 - [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
       (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and
