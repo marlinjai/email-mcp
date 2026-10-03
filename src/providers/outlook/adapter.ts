@@ -253,7 +253,8 @@ export class OutlookAdapter implements EmailProvider {
    *
    * Each attachment goes up in a request of its own, so the sizes are checked
    * per file, and before createReply so that a file that is too big leaves no
-   * draft behind. A draft that cannot be filled is deleted again.
+   * draft behind. A draft that cannot be filled is deleted again. (A draft
+   * whose send failed is kept, see `sendEmail`.)
    */
   private async createReplyDraft(params: SendEmailParams, replyToId: string): Promise<string> {
     const client = this.ensureClient();
@@ -291,7 +292,7 @@ export class OutlookAdapter implements EmailProvider {
   }
 
   /**
-   * Deletes a reply draft after a later step failed, so a failed reply leaves
+   * Deletes a reply draft that could not be filled, so a failed reply leaves
    * nothing half-built in Drafts. Returns the error to throw: the original
    * one, or, when the delete fails as well, the original message with a note
    * that the draft is still there.
@@ -315,8 +316,14 @@ export class OutlookAdapter implements EmailProvider {
       const draftId = await this.createReplyDraft(params, params.replyToGraphId);
       try {
         await client.api(`/me/messages/${encodeURIComponent(draftId)}/send`).post({});
-      } catch (error) {
-        throw await this.discardDraft(draftId, error);
+      } catch (error: any) {
+        // A failed send has no known outcome: after a timeout or a 5xx the
+        // mail can be on its way already, and a delete by this id could then
+        // remove the sent item. So the draft stays, and the error says where.
+        throw new Error(
+          `${error?.message ?? error} (the reply was saved as draft ${draftId} in Drafts and was not confirmed as sent; check Sent Items before sending it again)`,
+          { cause: error },
+        );
       }
       return { id: draftId };
     }

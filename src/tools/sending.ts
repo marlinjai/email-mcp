@@ -96,6 +96,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     {
       accountId: z.string(),
       emailId: z.string(),
+      sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
       body: BodySchema,
       replyAll: z.boolean().optional(),
       to: z
@@ -113,7 +114,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
-        const original = await provider.getEmail(args.emailId);
+        const original = await provider.getEmail(args.emailId, args.sourceFolder);
 
         // Build subject with Re: prefix (avoid duplicating)
         const subject = original.subject.startsWith('Re: ')
@@ -282,6 +283,10 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         .string()
         .optional()
         .describe('Id of the email this draft replies to. The draft joins that thread (Gmail threadId, Outlook createReply, In-Reply-To/References headers elsewhere)'),
+      inReplyToSourceFolder: z
+        .string()
+        .optional()
+        .describe('Folder of the email named in inReplyToEmailId (required for IMAP/iCloud when that email is not in INBOX). The draft itself is saved to Drafts'),
     },
     async (args) => {
       try {
@@ -293,7 +298,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           attachments: resolveAttachments(args.attachments),
         };
         if (args.inReplyToEmailId) {
-          Object.assign(params, replyThreading(await provider.getEmail(args.inReplyToEmailId)));
+          Object.assign(params, replyThreading(await provider.getEmail(args.inReplyToEmailId, args.inReplyToSourceFolder)));
         }
         const result = await provider.createDraft(params);
         return jsonResult(result);

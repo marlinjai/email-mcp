@@ -226,7 +226,7 @@ describe('Reading tools', () => {
       });
 
       expect(accountManager.getProvider).toHaveBeenCalledWith('acct-1');
-      expect(mockProvider.getEmail).toHaveBeenCalledWith('msg-1');
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('msg-1', undefined);
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe('msg-1');
@@ -247,7 +247,7 @@ describe('Reading tools', () => {
       });
 
       expect(accountManager.getProvider).toHaveBeenCalledWith('acct-1');
-      expect(mockProvider.getThread).toHaveBeenCalledWith('thread-1');
+      expect(mockProvider.getThread).toHaveBeenCalledWith('thread-1', undefined);
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe('thread-1');
@@ -279,6 +279,23 @@ describe('Reading tools', () => {
       expect(parsed.meta.filename).toBe('document.pdf');
       expect(parsed.meta.contentType).toBe('application/pdf');
       expect(parsed.meta.size).toBe(12);
+    });
+  });
+
+  describe('sourceFolder on email_get and email_get_thread', () => {
+    it('email_get passes sourceFolder to provider.getEmail', async () => {
+      await callTool(server, 'email_get', { accountId: 'acct-1', emailId: '42', sourceFolder: 'Archive' });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', 'Archive');
+    });
+
+    it('email_get passes no folder when none is given', async () => {
+      await callTool(server, 'email_get', { accountId: 'acct-1', emailId: '42' });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', undefined);
+    });
+
+    it('email_get_thread passes sourceFolder to provider.getThread', async () => {
+      await callTool(server, 'email_get_thread', { accountId: 'acct-1', threadId: '<t@example.com>', sourceFolder: 'Sent' });
+      expect(mockProvider.getThread).toHaveBeenCalledWith('<t@example.com>', 'Sent');
     });
   });
 

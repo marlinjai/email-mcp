@@ -48,9 +48,10 @@ export interface EmailProvider {
   // `sourceFolder` on getEmail and getAttachment: IMAP and iCloud ids are
   // UIDs, which only mean something inside one folder, so a message outside
   // INBOX needs its folder named. Gmail and Outlook ids are global and those
-  // adapters ignore it.
+  // adapters ignore it. On getThread it is the one folder IMAP and iCloud
+  // search for the thread's messages (INBOX when omitted).
   getEmail(id: string, sourceFolder?: string): Promise<Email>;
-  getThread(threadId: string): Promise<Thread>;
+  getThread(threadId: string, sourceFolder?: string): Promise<Thread>;
   getAttachment(emailId: string, attachmentId: string, sourceFolder?: string): Promise<{ data: Buffer; meta: AttachmentMeta }>;
 
   sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }>;

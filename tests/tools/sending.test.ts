@@ -171,7 +171,7 @@ describe('Sending tools', () => {
       });
 
       // Should fetch the original email
-      expect(mockProvider.getEmail).toHaveBeenCalledWith('orig-1');
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('orig-1', undefined);
 
       // Should send with threading headers and reply to sender
       expect(mockProvider.sendEmail).toHaveBeenCalledWith(
@@ -682,6 +682,50 @@ describe('Sending tools', () => {
       expect(params.references).toBeUndefined();
       expect(params.threadId).toBe('conv-1');
       expect(params.replyToGraphId).toBe('graph-1');
+    });
+
+    it('email_reply reads the original from sourceFolder', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: '42', sourceFolder: 'Archive', body: { text: 'B' } });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', 'Archive');
+      expect(mockProvider.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ inReplyTo: '<msg-1@example.com>' }));
+    });
+
+    it('email_reply does not send when the original is not in the folder', async () => {
+      (mockProvider.getEmail as any).mockRejectedValue(new Error('Email 42 not found'));
+      const result = await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: '42', sourceFolder: 'Archive', body: { text: 'B' } });
+      expect(JSON.parse(result.content[0].text).error).toBe('Email 42 not found');
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('email_draft_create reads the replied-to email from inReplyToSourceFolder', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: '42', inReplyToSourceFolder: 'Archive',
+      });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', 'Archive');
+      expect(mockProvider.createDraft).toHaveBeenCalledWith(expect.objectContaining({ inReplyTo: '<msg-1@example.com>' }));
+    });
+
+    it('email_draft_create without a folder passes none, and ignores the folder without inReplyToEmailId', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' }, inReplyToEmailId: '42',
+      });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', undefined);
+      (mockProvider.getEmail as any).mockClear();
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'New', body: { text: 'B' }, inReplyToSourceFolder: 'Archive',
+      });
+      expect(mockProvider.getEmail).not.toHaveBeenCalled();
+    });
+
+    it('email_draft_create creates no draft when the replied-to email cannot be read', async () => {
+      (mockProvider.getEmail as any).mockRejectedValue(new Error('Email 42 not found'));
+      const result = await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: '42', inReplyToSourceFolder: 'Archive',
+      });
+      expect(JSON.parse(result.content[0].text).error).toBe('Email 42 not found');
+      expect(mockProvider.createDraft).not.toHaveBeenCalled();
     });
 
     it('email_reply treats an empty `to` as not given', async () => {

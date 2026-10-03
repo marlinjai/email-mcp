@@ -553,6 +553,29 @@ describe('ImapAdapter threads, drafts, attachments', () => {
     expect(thread.lastMessageDate).toBeTruthy();
   });
 
+  it('getThread looks in INBOX when no sourceFolder is given', async () => {
+    const thread = await adapter.getThread('<msg-1@example.com>');
+    const client = (adapter as any).client;
+    expect(client.getMailboxLock).toHaveBeenCalledWith('INBOX');
+    expect(thread.messages.every((m) => m.folder === 'INBOX')).toBe(true);
+  });
+
+  it('getThread looks in the resolved sourceFolder and reports it on the messages', async () => {
+    const thread = await adapter.getThread('<msg-1@example.com>', 'sent');
+    const client = (adapter as any).client;
+    expect(client.getMailboxLock).toHaveBeenCalledWith('Sent');
+    expect(client.getMailboxLock).not.toHaveBeenCalledWith('INBOX');
+    expect(thread.messages.length).toBeGreaterThan(0);
+    expect(thread.messages.every((m) => m.folder === 'Sent')).toBe(true);
+    expect(mockMailboxLockRelease).toHaveBeenCalled();
+  });
+
+  it('getThread names the folder when the thread is not in it', async () => {
+    mockSearchResult = [];
+    await expect(adapter.getThread('<nope@example.com>', 'Sent')).rejects.toThrow('Thread <nope@example.com> not found in "Sent"');
+    expect(mockMailboxLockRelease).toHaveBeenCalled();
+  });
+
   it('getThread calls search with header criteria', async () => {
     await adapter.getThread('<msg-1@example.com>');
     const client = (adapter as any).client;

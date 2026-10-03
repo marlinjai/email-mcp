@@ -134,8 +134,8 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 |------|-------------|
 | `email_list_folders` | List all folders/labels for an account |
 | `email_search` | Search emails with filters. Returns compact results by default (`returnBody=false`). Set `returnBody=true` to include full email bodies |
-| `email_get` | Get full email content by ID (headers, body, attachment metadata) |
-| `email_get_thread` | Get an entire email thread/conversation |
+| `email_get` | Get full email content by ID (headers, body, attachment metadata). `sourceFolder` names the folder on iCloud/IMAP when the message is not in INBOX |
+| `email_get_thread` | Get an entire email thread/conversation. On iCloud/IMAP a thread is searched in one folder: INBOX, or the one named in `sourceFolder` |
 | `email_get_attachment` | Download a specific attachment by ID (returns base64 data). `sourceFolder` names the folder on iCloud/IMAP when the message is not in INBOX |
 | `email_save_attachment` | Download an attachment directly to disk, returning metadata only, which avoids the token cost of round-tripping large files as base64. `outputPath` is relative to a fixed downloads directory (`~/.email-mcp/downloads`, override with `EMAIL_MCP_DOWNLOADS_DIR`) and cannot escape it. `sourceFolder` as on `email_get_attachment` |
 
@@ -166,9 +166,9 @@ A path outside that folder is refused, as is a symbolic link that leads out of i
 | Tool | Description |
 |------|-------------|
 | `email_send` | Compose and send a new email (to, cc, bcc, subject, body, attachments) |
-| `email_reply` | Reply to an email in its thread. `replyAll` addresses the sender and all To/Cc recipients except your own address, each once. Optional `to`/`cc`/`bcc` overrides and `additionalRecipients`, e.g. when replying to your own sent message. Attachments supported |
+| `email_reply` | Reply to an email in its thread. `replyAll` addresses the sender and all To/Cc recipients except your own address, each once. Optional `to`/`cc`/`bcc` overrides and `additionalRecipients`, e.g. when replying to your own sent message. Attachments supported. `sourceFolder` names the folder on iCloud/IMAP when the message is not in INBOX |
 | `email_forward` | Forward an email to new recipients (`to`, `cc`, `bcc`, optional text on top, attachments). The original's attachments are left out unless `includeOriginalAttachments: true`. `sourceFolder` names the folder on iCloud/IMAP when the message is not in INBOX |
-| `email_draft_create` | Save a draft without sending (attachments supported). `inReplyToEmailId` saves it as a reply inside that message's thread |
+| `email_draft_create` | Save a draft without sending (attachments supported). `inReplyToEmailId` saves it as a reply inside that message's thread (`inReplyToSourceFolder` names that message's folder on iCloud/IMAP when it is not in INBOX) |
 | `email_draft_update` | Update an existing draft in place. A reply draft stays in its thread. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended: the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 

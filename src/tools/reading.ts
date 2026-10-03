@@ -121,11 +121,12 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
     {
       accountId: z.string(),
       emailId: z.string(),
+      sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
-        const email = await provider.getEmail(args.emailId);
+        const email = await provider.getEmail(args.emailId, args.sourceFolder);
         return jsonResult(email);
       } catch (error: any) {
         return jsonResult({ error: error.message });
@@ -140,11 +141,12 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
     {
       accountId: z.string(),
       threadId: z.string(),
+      sourceFolder: z.string().optional().describe('Folder to look for the thread in on IMAP/iCloud, where a thread is searched in one folder (default INBOX). Gmail and Outlook ignore it'),
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
-        const thread = await provider.getThread(args.threadId);
+        const thread = await provider.getThread(args.threadId, args.sourceFolder);
         return jsonResult(thread);
       } catch (error: any) {
         return jsonResult({ error: error.message });

@@ -561,21 +561,35 @@ describe('OutlookAdapter', () => {
         expect(sendReq.post).not.toHaveBeenCalled();
       });
 
-      it('deletes the draft and rethrows when the send fails', async () => {
+      it('keeps the draft when the send fails, and says where it is: the mail may be on its way', async () => {
         const { draftReq, sendReq } = setUp();
-        const failure = new Error('send failed');
+        const failure = new Error('gateway timeout');
         sendReq.post = vi.fn().mockRejectedValue(failure);
-        await expect(adapter.sendEmail(reply)).rejects.toBe(failure);
-        expect(draftReq.delete).toHaveBeenCalledTimes(1);
+        const error: any = await adapter.sendEmail(reply).catch((e) => e);
+        expect(error).toBeInstanceOf(Error);
+        expect(error.message).toBe(
+          'gateway timeout (the reply was saved as draft reply-draft-1 in Drafts and was not confirmed as sent; check Sent Items before sending it again)',
+        );
+        expect(error.cause).toBe(failure);
+        expect(draftReq.patch).toHaveBeenCalledTimes(1);
+        expect(draftReq.delete).not.toHaveBeenCalled();
       });
 
-      it('says that the draft was left in Drafts when deleting it fails too', async () => {
-        const { draftReq, sendReq } = setUp();
-        const failure = new Error('send failed');
-        sendReq.post = vi.fn().mockRejectedValue(failure);
+      it('keeps the draft with its attachments when the send fails after the uploads', async () => {
+        const { draftReq, attachReq, sendReq } = setUp();
+        sendReq.post = vi.fn().mockRejectedValue(new Error('503'));
+        await expect(adapter.sendEmail({ ...reply, attachments: [file] })).rejects.toThrow(/saved as draft reply-draft-1 in Drafts/);
+        expect(attachReq.post).toHaveBeenCalledTimes(1);
+        expect(draftReq.delete).not.toHaveBeenCalled();
+      });
+
+      it('says that the draft was left in Drafts when a fill fails and deleting it fails too', async () => {
+        const { draftReq } = setUp();
+        const failure = new Error('patch failed');
+        draftReq.patch = vi.fn().mockRejectedValue(failure);
         draftReq.delete = vi.fn().mockRejectedValue(new Error('delete failed'));
         const error: any = await adapter.sendEmail(reply).catch((e) => e);
-        expect(error.message).toMatch(/^send failed \(the reply draft reply-draft-1 could not be removed and was left in Drafts: delete failed\)$/);
+        expect(error.message).toMatch(/^patch failed \(the reply draft reply-draft-1 could not be removed and was left in Drafts: delete failed\)$/);
         expect(error.cause).toBe(failure);
       });
 

@@ -487,14 +487,21 @@ export class ImapAdapter implements EmailProvider {
     }
   }
 
-  async getThread(threadId: string): Promise<Thread> {
+  /**
+   * IMAP has no thread object: the thread is the set of messages in ONE
+   * folder whose Message-ID, References or In-Reply-To name `threadId`.
+   * Messages of the same conversation in other folders (the own replies in
+   * Sent, for example) are not part of the result.
+   */
+  async getThread(threadId: string, sourceFolder?: string): Promise<Thread> {
     const client = await this.ensureConnected();
 
+    const folder = sourceFolder ? await this.resolveFolder(sourceFolder) : 'INBOX';
     let lock;
     try {
-      lock = await client.getMailboxLock('INBOX');
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
-      throw formatImapError(error, 'Failed to open folder "INBOX"');
+      throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
       // Search for messages that reference this thread ID via header
@@ -504,14 +511,14 @@ export class ImapAdapter implements EmailProvider {
       );
       const uids: number[] = Array.isArray(searchResult) ? searchResult : [];
 
-      if (uids.length === 0) throw new Error(`Thread ${threadId} not found`);
+      if (uids.length === 0) throw new Error(`Thread ${threadId} not found in "${folder}"`);
 
       const messages: Email[] = [];
       for await (const msg of client.fetch(uids, { source: true, uid: true, flags: true })) {
         if (!msg.source) continue;
         const parsed = await simpleParser(msg.source);
         (parsed as any).flags = msg.flags;
-        messages.push(mapParsedEmail(parsed, 'INBOX', this.accountId, msg.uid));
+        messages.push(mapParsedEmail(parsed, folder, this.accountId, msg.uid));
       }
 
       // Collect unique participants
