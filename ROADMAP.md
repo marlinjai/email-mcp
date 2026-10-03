@@ -39,7 +39,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       with a clear error; upload sessions for larger files are not built, by decision of
       2026-10-03. Built on top (pull request #21 by @jonboy648): threaded replies, reply drafts
       and opt-in forwarding of the original attachments; the live test per provider also
-      covers a threaded reply and a reply draft. Released as 1.10.0 on 2026-10-03, and
+      covers a threaded reply and a reply draft. Prepared for release as 1.10.0 on 2026-10-03 (tag and publish pending), and
       `EMAIL_MCP_ATTACHMENTS_DIR` is set to `~/Documents/email-outbox` in the Infisical Dotfiles
       project for Marlin's own use (2026-10-03)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
