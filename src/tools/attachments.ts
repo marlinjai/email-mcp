@@ -191,9 +191,13 @@ export function resolveAttachments(
 ): Attachment[] | undefined {
   if (inputs === undefined) return undefined;
   const planned = inputs.map((input) => plan(input, env, dataDir));
-  const total = planned.reduce((sum, p) => sum + p.bytes, 0);
-  if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
-    throw new Error(`Attachments total ${megabytes(total)}, over the ${megabytes(MAX_TOTAL_ATTACHMENT_BYTES)} limit`);
-  }
+  assertAttachmentTotal(planned.reduce((sum, p) => sum + p.bytes, 0));
   return planned.map((p) => p.load());
+}
+
+/** Throws when attachments of `totalBytes` in one message are over the cap. */
+export function assertAttachmentTotal(totalBytes: number): void {
+  if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    throw new Error(`Attachments total ${megabytes(totalBytes)}, over the ${megabytes(MAX_TOTAL_ATTACHMENT_BYTES)} limit`);
+  }
 }

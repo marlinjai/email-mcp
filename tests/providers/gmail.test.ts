@@ -487,6 +487,33 @@ describe('GmailAdapter', () => {
       });
     });
 
+    it('exposes the threading headers a reply is built from', async () => {
+      mockMessagesGet.mockResolvedValueOnce({
+        data: {
+          ...mockMessageMetadata,
+          payload: {
+            ...mockMessageMetadata.payload,
+            headers: [
+              ...mockMessageMetadata.payload.headers,
+              { name: 'In-Reply-To', value: '<parent@example.com>' },
+              { name: 'References', value: '<root@example.com> <parent@example.com>' },
+            ],
+          },
+        },
+      });
+      const email = await adapter.getEmail('msg-123');
+      expect(email.headers).toEqual({
+        'message-id': '<msg-123@example.com>',
+        'in-reply-to': '<parent@example.com>',
+        references: '<root@example.com> <parent@example.com>',
+      });
+    });
+
+    it('has no headers map when the message carries none of them', async () => {
+      mockMessagesGet.mockResolvedValueOnce({ data: mockMessageWithAttachment });
+      expect((await adapter.getEmail('msg-att-1')).headers).toBeUndefined();
+    });
+
     it('maps attachments', async () => {
       mockMessagesGet.mockResolvedValueOnce({
         data: mockMessageWithAttachment,
@@ -511,13 +538,34 @@ describe('GmailAdapter', () => {
   });
 
   describe('sendEmail', () => {
-    it('joins the Gmail thread when threadId is given', async () => {
-      await adapter.sendEmail({
-        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
-      });
-      expect(mockMessagesSend).toHaveBeenCalledWith(
-        expect.objectContaining({ requestBody: expect.objectContaining({ threadId: 'thread-9' }) }),
-      );
+    const reply = {
+      to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' },
+      threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'],
+    };
+
+    it('joins the Gmail thread when threadId comes with the reply headers and a subject', async () => {
+      await adapter.sendEmail(reply);
+      const body = mockMessagesSend.mock.calls[0][0].requestBody;
+      expect(body.threadId).toBe('thread-9');
+      const parsed = await simpleParser(Buffer.from(body.raw, 'base64url'));
+      expect(parsed.inReplyTo).toBe('<orig@example.com>');
+      expect(parsed.references).toBe('<orig@example.com>');
+      expect(parsed.subject).toBe('Re: x');
+    });
+
+    it.each([
+      ['In-Reply-To', { ...reply, inReplyTo: undefined }],
+      ['References', { ...reply, references: undefined }],
+      ['References (empty list)', { ...reply, references: [] }],
+      ['a subject', { ...reply, subject: ' ' }],
+    ])('sends without threadId when %s is missing', async (_what, params) => {
+      await adapter.sendEmail(params);
+      expect(mockMessagesSend.mock.calls[0][0].requestBody).toEqual({ raw: expect.any(String) });
+    });
+
+    it('a plain send carries no threadId', async () => {
+      await adapter.sendEmail({ to: [{ email: 'bob@example.com' }], subject: 'New', body: { text: 'y' } });
+      expect(mockMessagesSend.mock.calls[0][0].requestBody).toEqual({ raw: expect.any(String) });
     });
 
     it('sends email via Gmail API', async () => {
@@ -539,11 +587,19 @@ describe('GmailAdapter', () => {
   });
 
   describe('createDraft', () => {
-    it('puts a reply draft in the Gmail thread when threadId is given', async () => {
+    it('puts a reply draft in the Gmail thread when threadId comes with the reply headers', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' },
+        threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'],
+      });
+      expect(mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.threadId).toBe('thread-9');
+    });
+
+    it('creates the draft without threadId when the reply headers are missing', async () => {
       await adapter.createDraft({
         to: [{ email: 'bob@example.com' }], subject: 'Re: x', body: { text: 'y' }, threadId: 'thread-9',
       });
-      expect(mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.threadId).toBe('thread-9');
+      expect(mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message).toEqual({ raw: expect.any(String) });
     });
 
     it('creates draft via Gmail API', async () => {
@@ -592,6 +648,72 @@ describe('GmailAdapter', () => {
           requestBody: expect.objectContaining({ message: { raw: expect.any(String) } }),
         }),
       );
+    });
+
+    const update = { to: [{ email: 'bob@example.com' }], subject: 'Re: Test Email', body: { text: 'Second version' } };
+    const storedReplyDraft = (headers: Array<{ name: string; value: string }>) => ({
+      data: { id: 'draft-1', message: { id: 'msg-draft-1', threadId: 'thread-456', payload: { headers } } },
+    });
+
+    it('keeps a reply draft in its thread: threadId and reply headers are carried over', async () => {
+      mockDraftsGet.mockResolvedValueOnce(storedReplyDraft([
+        { name: 'Subject', value: 'Re: Test Email' },
+        { name: 'In-Reply-To', value: '<msg-123@example.com>' },
+        { name: 'References', value: '<root@example.com>\r\n <msg-123@example.com>' },
+      ]));
+
+      await adapter.updateDraft('draft-1', update);
+
+      expect(mockDraftsGet).toHaveBeenCalledWith({ userId: 'me', id: 'draft-1', format: 'metadata' });
+      const message = mockDraftsUpdate.mock.calls[0][0].requestBody.message;
+      expect(message.threadId).toBe('thread-456');
+      const parsed = await simpleParser(Buffer.from(message.raw, 'base64url'));
+      expect(parsed.inReplyTo).toBe('<msg-123@example.com>');
+      expect(parsed.references).toEqual(['<root@example.com>', '<msg-123@example.com>']);
+      expect(parsed.text?.trim()).toBe('Second version');
+    });
+
+    it('carries over a reply draft that has In-Reply-To but no References', async () => {
+      mockDraftsGet.mockResolvedValueOnce(storedReplyDraft([{ name: 'in-reply-to', value: '<msg-123@example.com>' }]));
+
+      await adapter.updateDraft('draft-1', update);
+
+      const message = mockDraftsUpdate.mock.calls[0][0].requestBody.message;
+      expect(message.threadId).toBe('thread-456');
+      const parsed = await simpleParser(Buffer.from(message.raw, 'base64url'));
+      expect(parsed.references).toBe('<msg-123@example.com>');
+    });
+
+    it('a draft that is not a reply gets no threadId (its stored thread is its own)', async () => {
+      mockDraftsGet.mockResolvedValueOnce(storedReplyDraft([{ name: 'Subject', value: 'New' }]));
+
+      await adapter.updateDraft('draft-1', update);
+
+      expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message).toEqual({ raw: expect.any(String) });
+    });
+
+    it('a stored draft without a message leaves the update unthreaded', async () => {
+      mockDraftsGet.mockResolvedValueOnce({ data: { id: 'draft-1' } });
+
+      await adapter.updateDraft('draft-1', update);
+
+      expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message).toEqual({ raw: expect.any(String) });
+    });
+
+    it('does not read the stored draft when the caller names the thread', async () => {
+      await adapter.updateDraft('draft-1', {
+        ...update, threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'],
+      });
+
+      expect(mockDraftsGet).not.toHaveBeenCalled();
+      expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message.threadId).toBe('thread-9');
+    });
+
+    it('fails without changing the draft when the stored draft cannot be read', async () => {
+      mockDraftsGet.mockRejectedValueOnce(new Error('Requested entity was not found.'));
+
+      await expect(adapter.updateDraft('gone', update)).rejects.toThrow('Requested entity was not found.');
+      expect(mockDraftsUpdate).not.toHaveBeenCalled();
     });
   });
 

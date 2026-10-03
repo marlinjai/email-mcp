@@ -38,7 +38,9 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       unless they are passed again (Outlook keeps them); the tool description says so, the fix
       is to carry them over. Outlook is limited to 3 MB per message
       with a clear error; upload sessions for larger files are not built, by decision of
-      2026-10-03 (2026-10-03)
+      2026-10-03. Built on top (pull request #21 by @jonboy648): threaded replies, reply drafts
+      and opt-in forwarding of the original attachments; the live test per provider also
+      covers a threaded reply and a reply draft (2026-10-03)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)

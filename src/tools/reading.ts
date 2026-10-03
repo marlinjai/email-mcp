@@ -160,11 +160,12 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
       accountId: z.string(),
       emailId: z.string(),
       attachmentId: z.string(),
+      sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
-        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId);
+        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId, args.sourceFolder);
         return jsonResult({
           data: Buffer.from(data).toString('base64'),
           meta,
@@ -184,12 +185,13 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
       emailId: z.string(),
       attachmentId: z.string(),
       outputPath: z.string().describe('Relative file path (within the downloads directory) to save the attachment as'),
+      sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
     },
     async (args) => {
       try {
         const absPath = resolveDownloadPath(args.outputPath);
         const provider = await accountManager.getProvider(args.accountId);
-        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId);
+        const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId, args.sourceFolder);
 
         // Attachments are private mail content: directories email-mcp creates
         // are owner-only (0700), and the file is owner-only (0600) like the

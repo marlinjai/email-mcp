@@ -66,6 +66,12 @@ export class AccountManager {
     }));
   }
 
+  /** The account's own address, or undefined for an unknown account id. */
+  async getAccountEmail(accountId: string): Promise<string | undefined> {
+    const creds = this.credentials.get(accountId) ?? (await this.store.get(accountId));
+    return creds?.email;
+  }
+
   async getProvider(accountId: string): Promise<EmailProvider> {
     const existing = this.providers.get(accountId);
     if (existing) {

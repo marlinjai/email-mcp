@@ -21,6 +21,21 @@ export function mapImapFolder(imapFolder: any): Folder {
   };
 }
 
+/**
+ * The id an attachment is listed under: its Content-ID when it has one,
+ * otherwise its position in the message. `getAttachment` looks attachments up
+ * with the same function, so every id handed out here resolves.
+ */
+export function imapAttachmentId(att: any, index: number): string {
+  return att.contentId || `att-${index}`;
+}
+
+// mailparser's headerLines carry the whole raw line ("Message-ID: <x>",
+// folded lines included). Callers want the value alone.
+function headerValue(line: string): string {
+  return line.slice(line.indexOf(':') + 1).replace(/\r?\n[ \t]+/g, ' ').trim();
+}
+
 export function mapParsedEmail(parsed: any, folder: string, accountId: string, uid?: number): Email {
   const mapContact = (addr: any): Contact => ({
     name: addr.name || undefined,
@@ -33,7 +48,7 @@ export function mapParsedEmail(parsed: any, folder: string, accountId: string, u
   };
 
   const attachments: AttachmentMeta[] = (parsed.attachments || []).map((att: any, i: number) => ({
-    id: att.contentId || `att-${i}`,
+    id: imapAttachmentId(att, i),
     filename: att.filename || `attachment-${i}`,
     contentType: att.contentType || 'application/octet-stream',
     size: att.size || 0,
@@ -65,7 +80,7 @@ export function mapParsedEmail(parsed: any, folder: string, accountId: string, u
       draft: parsed.flags?.has('\\Draft') || false,
     },
     headers: parsed.headerLines
-      ? Object.fromEntries(parsed.headerLines.map((h: any) => [h.key, h.line]))
+      ? Object.fromEntries(parsed.headerLines.map((h: any) => [h.key, headerValue(h.line)]))
       : undefined,
   };
 }

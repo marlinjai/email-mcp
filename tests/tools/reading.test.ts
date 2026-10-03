@@ -271,7 +271,7 @@ describe('Reading tools', () => {
       });
 
       expect(accountManager.getProvider).toHaveBeenCalledWith('acct-1');
-      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1');
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1', undefined);
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.data).toBe(Buffer.from('file-content').toString('base64'));
@@ -279,6 +279,19 @@ describe('Reading tools', () => {
       expect(parsed.meta.filename).toBe('document.pdf');
       expect(parsed.meta.contentType).toBe('application/pdf');
       expect(parsed.meta.size).toBe(12);
+    });
+  });
+
+  describe('email_get_attachment sourceFolder', () => {
+    it('passes sourceFolder to the provider (IMAP and iCloud messages outside INBOX)', async () => {
+      await callTool(server, 'email_get_attachment', {
+        accountId: 'acct-1',
+        emailId: '42',
+        attachmentId: 'att-0',
+        sourceFolder: 'Archive',
+      });
+
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('42', 'att-0', 'Archive');
     });
   });
 
@@ -307,7 +320,7 @@ describe('Reading tools', () => {
         outputPath: 'document.pdf',
       });
 
-      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1');
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1', undefined);
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.path).toBe(path.join(tmpDir, 'document.pdf'));
@@ -317,6 +330,19 @@ describe('Reading tools', () => {
       expect(parsed.data).toBeUndefined();
 
       expect(fs.readFileSync(path.join(tmpDir, 'document.pdf'), 'utf-8')).toBe('file-content');
+    });
+
+    it('passes sourceFolder to the provider (IMAP and iCloud messages outside INBOX)', async () => {
+      await callTool(server, 'email_save_attachment', {
+        accountId: 'acct-1',
+        emailId: '42',
+        attachmentId: 'att-0',
+        outputPath: 'from-archive.pdf',
+        sourceFolder: 'Archive',
+      });
+
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('42', 'att-0', 'Archive');
+      expect(fs.existsSync(path.join(tmpDir, 'from-archive.pdf'))).toBe(true);
     });
 
     it('creates nested subdirectories under the downloads dir', async () => {
