@@ -785,7 +785,7 @@ describe('OutlookAdapter', () => {
       );
     });
 
-    it('refuses attachments that total more than 3 MB, on a draft and on send', async () => {
+    it('refuses a message whose base64-encoded request body passes 4 MB, on a draft and on send', async () => {
       const draftRequest = createMockGraphRequest({ id: 'draft-att' });
       mockApiRequests.set('/me/messages', draftRequest);
       const sendRequest = createMockGraphRequest({});
@@ -797,7 +797,7 @@ describe('OutlookAdapter', () => {
         email: 'test@outlook.com',
         oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
       });
-      const twoMb = Buffer.alloc(2 * 1024 * 1024);
+      const twoMb = Buffer.alloc(2 * 1024 * 1024); // 2 x 2 MB is about 5.3 MB once base64-encoded
       const message = {
         to: [{ email: 'bob@test.com' }],
         subject: 'Two files',
@@ -808,8 +808,8 @@ describe('OutlookAdapter', () => {
         ],
       };
 
-      await expect(adapter.createDraft(message)).rejects.toThrow(/up to 3\.0 MB of attachments per message.*4\.0 MB/);
-      await expect(adapter.sendEmail(message)).rejects.toThrow(/up to 3\.0 MB of attachments per message/);
+      await expect(adapter.createDraft(message)).rejects.toThrow(/requests up to 4\.0 MB.*base64-encoded/);
+      await expect(adapter.sendEmail(message)).rejects.toThrow(/requests up to 4\.0 MB/);
       expect(draftRequest.post).not.toHaveBeenCalled();
       expect(sendRequest.post).not.toHaveBeenCalled();
     });
@@ -968,6 +968,32 @@ describe('OutlookAdapter', () => {
 
       expect(delete1.delete).toHaveBeenCalled();
       expect(delete2.delete).toHaveBeenCalled();
+    });
+
+    it('follows every page of the list, however many there are', async () => {
+      mockApiRequests.set('/me/messages/draft-123', createMockGraphRequest({}));
+      const pages = 105;
+      const link = (n: number) => `https://graph.microsoft.com/v1.0/me/messages/draft-123/attachments?$skip=${n}`;
+      mockApiRequests.set(
+        '/me/messages/draft-123/attachments',
+        createMockGraphRequest({ value: [{ id: 'old-0' }], '@odata.nextLink': link(1) }),
+      );
+      for (let n = 1; n < pages; n += 1) {
+        mockApiRequests.set(
+          link(n),
+          createMockGraphRequest(n === pages - 1 ? { value: [{ id: `old-${n}` }] } : { value: [{ id: `old-${n}` }], '@odata.nextLink': link(n + 1) }),
+        );
+      }
+      const deletes = Array.from({ length: pages }, (_, n) => {
+        const request = createMockGraphRequest();
+        mockApiRequests.set(`/me/messages/draft-123/attachments/old-${n}`, request);
+        return request;
+      });
+      await adapter.connect(outlookAccount);
+
+      await adapter.updateDraft('draft-123', { ...draft, attachments: [] });
+
+      for (const request of deletes) expect(request.delete).toHaveBeenCalled();
     });
 
     it('refuses a file over 3 MB before touching the draft', async () => {

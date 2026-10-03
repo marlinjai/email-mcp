@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { readFileSync, realpathSync, statSync } from 'node:fs';
+import type { Stats } from 'node:fs';
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { SendEmailParams } from '../providers/provider.js';
@@ -134,7 +135,9 @@ function planPath(input: AttachmentInput, env: NodeJS.ProcessEnv, dataDir: strin
     throw new Error('Files in the email-mcp data folder itself cannot be attached.');
   }
 
-  const stat = statSync(real);
+  // lstat, not stat: `real` is already fully resolved, so a link here means
+  // the path was swapped after the checks above.
+  const stat = lstatSync(real);
   if (!stat.isFile()) {
     throw new Error(`Not a file: ${path.relative(dir, candidate)}`);
   }
@@ -144,10 +147,35 @@ function planPath(input: AttachmentInput, env: NodeJS.ProcessEnv, dataDir: strin
     bytes: stat.size,
     load: () => ({
       filename,
-      content: readFileSync(real),
+      content: readValidatedFile(real, stat, path.relative(dir, candidate)),
       contentType: input.contentType ?? inferContentType(filename),
     }),
   };
+}
+
+/**
+ * Read the file that was validated, not whatever the path names by now. The
+ * file is opened without following a final link, and its identity (device and
+ * inode) must still be the one checked in `planPath`; the bytes are then read
+ * from that same descriptor, so a swap to a symbolic link after validation
+ * cannot lead the read out of the attachments folder.
+ */
+function readValidatedFile(real: string, validated: Stats, display: string): Buffer {
+  let fd: number;
+  try {
+    fd = openSync(real, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+  } catch {
+    throw new Error(`${display} changed while it was being attached; try again.`);
+  }
+  try {
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.dev !== validated.dev || opened.ino !== validated.ino) {
+      throw new Error(`${display} changed while it was being attached; try again.`);
+    }
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function planContent(input: AttachmentInput): Planned {
