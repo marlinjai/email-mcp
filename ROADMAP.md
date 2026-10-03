@@ -92,8 +92,17 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       Fund pays for six months of near full-time work from 2027-06-01 at about a 9 percent
       acceptance rate; neither is confirmed to cover this recurring audit fee. The site
       documents the status at https://email.lumitra.co/privacy#google-verification. When Google
-      approves: close GitHub issue #1 ("unverified app"), update that site section, and
-      re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line)
+      approves: close GitHub issue #1 ("unverified app"), update that site section,
+      re-enable the lumitra.co zone protections (knowledge-base ROADMAP, infra line), and take
+      up pull request #22 by @jonboy648 (`email-mcp-fetch`, a command-line tool that reads mail
+      for scripts without an assistant). It is parked with the `hold` label by Marlin's decision
+      of 2026-10-03, because unattended use is not what Google reviewed and four sentences of
+      the privacy policy would become untrue. To take it: rebase its top commit alone onto
+      main, no overwriting on download and default to the downloads folder, strict argument
+      parsing, the Gmail default folder, disconnect on every exit path, an offset or cursor,
+      tests, and a privacy policy section on script-driven use. Declined on the same day: #23
+      (`email-mcp-digest`), a personal workflow that belongs in its own package; that would
+      need email-mcp to be usable as a library, which is an idea, not a commitment
       (2026-10-03)
 - [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
       (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
