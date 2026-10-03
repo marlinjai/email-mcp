@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-03
+
+Attachments and replies that stay in their thread. A minor release: new inputs on existing tools and one new setting, no tool renamed or removed. Two things behave differently after upgrading, both under "Changed": the `headers` of a message on iCloud and IMAP, and reply-all recipients.
+
 ### Added
 - **Attachments on outgoing mail.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an `attachments` list: `{ path }` or `{ content, filename }` (base64), with an optional `contentType`. The total is capped at 25 MB and checked before any file is read. Contributed by @jonboy648 (#20).
 - **`EMAIL_MCP_ATTACHMENTS_DIR`: the one folder files may be attached from.** Attaching by path is off until this is set in the server's environment. A path outside the folder, a symbolic link leading out of it and email-mcp's own data files are refused, so a mail that asks the assistant to attach a private key cannot get its way. Content passed directly as base64 works without it.
@@ -281,6 +285,7 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.10.0]: https://github.com/marlinjai/email-mcp/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/marlinjai/email-mcp/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/marlinjai/email-mcp/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/marlinjai/email-mcp/compare/v1.7.2...v1.8.0
