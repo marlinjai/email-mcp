@@ -6,12 +6,12 @@
     "url": "https://github.com/marlinjai/email-mcp",
     "source": "github"
   },
-  "version": "1.2.3",
+  "version": "1.9.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@marlinjai/email-mcp",
-      "version": "1.2.3",
+      "version": "1.9.0",
       "transport": {
         "type": "stdio"
       }

@@ -7,12 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-02
+
+Forwarding rules. A minor release: three new tools, and one existing tool lists less than before (see "Changed").
+
 ### Added
-- **Outgoing attachments.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` accept an `attachments` list: a local file by absolute `path`, or base64 `content` with a `filename`. The MIME type is inferred from the extension unless `contentType` is given, and the total is capped at 25 MB. On `email_draft_update`, given attachments replace the draft's current ones.
+- **Forwarding rules: `email_create_forward_rule`, `email_list_forward_rules`, `email_delete_forward_rule`.** A standing rule that forwards future mail matching a sender, subject or header to another address, on Gmail (a filter) and Outlook (an inbox rule). Forwarding is off until you allow a target: the tool only accepts addresses listed in the new `EMAIL_MCP_FORWARD_ALLOWLIST` environment variable (comma-separated), which no tool can change, so an email that asks the assistant to forward mail somewhere cannot get its way. On Gmail the target must also be a confirmed forwarding address of the account; a missing or unconfirmed one is answered with the manual step. Creating the same rule twice returns the existing one, the original stays in the inbox unless `keepInInbox` is `false`, and the list includes forwarding rules made by hand in Gmail or Outlook. iCloud and generic IMAP say that they have no rule mechanism. No new scope: Gmail uses `gmail.settings.basic`, Outlook `MailboxSettings.ReadWrite`, both already requested for block rules.
+- **The setup wizard ends with a short note on how the project is funded.** After "Setup complete!" it prints three lines: email-mcp is free, Google requires a yearly independent security audit (675 US dollars) for the Gmail sign-in it ships, and a link to GitHub Sponsors. Printed once per wizard run, nothing else changes.
+
+### Changed
+- **`email_list_block_rules` no longer lists forwarding rules.** It used to show every Gmail filter and every Outlook inbox rule, so a forwarding rule appeared as a "moveToJunk" block rule. Those now appear in `email_list_forward_rules` only.
+
+## [1.8.1] - 2026-09-27
+
+Formatted emails survive. A patch release: bug fixes only, no tool or input changed.
 
 ### Fixed
-- **Gmail dropped attachments and sent HTML as plain text.** The Gmail send and draft paths built a single `text/plain` part by hand, so `SendEmailParams.attachments` were ignored and an HTML body arrived as literal markup. Gmail messages and IMAP drafts are now built with nodemailer's MailComposer (already a dependency), which produces the proper multipart structure.
-- **Outlook and IMAP drafts dropped attachments.** Outlook `createDraft` and `updateDraft` now carry attachments (update replaces them explicitly, since a Graph PATCH cannot), and IMAP drafts include them in the appended message.
+- **Gmail dropped the HTML part of every outgoing message.** Send, reply, forward, draft create and draft update built the message as `text/plain` only, so a message with both a text and an HTML body lost its HTML (a draft opened in Gmail as "Plain text"), and an HTML-only message arrived showing its raw HTML source. Gmail now receives a proper MIME message: text only stays `text/plain`, HTML only becomes `multipart/alternative` with a readable text part derived from the HTML, and both parts are kept as `multipart/alternative` with text first and HTML second. Attachments passed to the Gmail provider are now included instead of discarded.
+- **IMAP and iCloud drafts lost their HTML and their Bcc recipients.** A draft with both parts was stored as text only, a draft with only HTML was stored with an empty body, and Bcc was never written to the draft. Drafts now use the same MIME builder as Gmail, so both parts, Bcc and attachments are stored.
+- **Umlauts, emoji and quotes in headers could break Gmail and IMAP messages.** Subjects and display names with non-ASCII characters were written as raw 8-bit text instead of being encoded, and a display name containing a double quote (for example `Anna "Ann" Schmidt`) broke the To line. Headers are now RFC 2047 encoded and display names are quoted and escaped correctly on Gmail, IMAP, iCloud and SMTP sends; Cc and Bcc display names are no longer dropped. Non-ASCII bodies are sent as UTF-8 with quoted-printable or base64 transfer encoding.
+- **SMTP sends (IMAP and iCloud accounts) with only an HTML body had no text part.** They now carry a text part derived from the HTML as well.
 
 ## [1.8.0] - 2026-09-18
 
@@ -245,6 +259,8 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.9.0]: https://github.com/marlinjai/email-mcp/compare/v1.8.1...v1.9.0
+[1.8.1]: https://github.com/marlinjai/email-mcp/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/marlinjai/email-mcp/compare/v1.7.2...v1.8.0
 [1.2.3]: https://github.com/marlinjai/email-mcp/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/marlinjai/email-mcp/compare/v1.2.1...v1.2.2

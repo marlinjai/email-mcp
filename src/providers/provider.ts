@@ -10,6 +10,8 @@ import type {
   BatchResult,
   BlockRuleInput,
   BlockRule,
+  ForwardRuleInput,
+  ForwardRule,
 } from '../models/types.js';
 
 export interface SendEmailParams {
@@ -85,4 +87,13 @@ export interface EmailProvider {
   createBlockRule?(rule: BlockRuleInput): Promise<{ id: string }>;
   listBlockRules?(): Promise<BlockRule[]>;
   deleteBlockRule?(ruleId: string): Promise<void>;
+
+  // Forwarding rules (optional, Gmail and Outlook only; see
+  // docs/plans/2026-10-02-forward-rules.md). The allowlist check on the
+  // target address happens in the tool layer, before any of these is called.
+  // createForwardRule returns the existing rule's id with alreadyExisted set
+  // when the same match already forwards to the same address.
+  createForwardRule?(rule: ForwardRuleInput): Promise<{ id: string; alreadyExisted?: boolean }>;
+  listForwardRules?(): Promise<ForwardRule[]>;
+  deleteForwardRule?(ruleId: string): Promise<void>;
 }

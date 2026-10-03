@@ -12,3 +12,6 @@
 
 /demo/*
   Cache-Control: public, max-age=0, must-revalidate
+
+/funding.json
+  Cache-Control: public, max-age=0, must-revalidate

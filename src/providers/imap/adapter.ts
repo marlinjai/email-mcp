@@ -580,15 +580,19 @@ export class ImapAdapter implements EmailProvider {
     return { id: messageId };
   }
 
-  private async buildDraftRfc2822(params: SendEmailParams): Promise<string> {
-    // MailComposer output is 7-bit safe (headers and parts are encoded).
-    return (await buildMimeMessage(this.email, params)).toString();
+  /**
+   * Builds the full MIME message a draft is stored as: text and HTML parts,
+   * Bcc kept so the draft remembers its recipients, encoded headers and any
+   * attachments. See `buildMimeMessage`.
+   */
+  private buildDraftMessage(params: SendEmailParams): Promise<Buffer> {
+    return buildMimeMessage(this.email, params);
   }
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = await this.ensureConnected();
 
-    const rawMessage = await this.buildDraftRfc2822(params);
+    const rawMessage = await this.buildDraftMessage(params);
     // Resolve the real drafts mailbox instead of assuming a top-level "Drafts"
     // folder. Gmail (and localized accounts) expose it as "[Gmail]/Drafts" /
     // "[Gmail]/Entwürfe", so a hardcoded path makes append fail. See issue #3.
@@ -607,6 +611,10 @@ export class ImapAdapter implements EmailProvider {
   async updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }> {
     const client = await this.ensureConnected();
     const draftsFolder = sourceFolder ? await this.resolveFolder(sourceFolder) : await this.resolveFolder('Drafts');
+    // Build the new revision before touching the old one: if MIME compilation
+    // fails, the existing draft must survive instead of being deleted with no
+    // replacement.
+    const rawMessage = await this.buildDraftMessage(params);
 
     let lock;
     try {
@@ -620,7 +628,6 @@ export class ImapAdapter implements EmailProvider {
       lock.release();
     }
 
-    const rawMessage = await this.buildDraftRfc2822(params);
     const result = await client.append(draftsFolder, rawMessage, ['\\Draft', '\\Seen']);
     if (!result) throw new Error('Failed to append updated draft');
     return { id: String(result.uid || result) };

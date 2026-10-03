@@ -76,6 +76,8 @@ The wizard asks which Gmail permission scope to authorize:
 
 Pass `--scope full` or `--scope restricted` to skip the prompt, or set `EMAIL_MCP_GMAIL_SCOPE=restricted` in the environment the wizard runs in.
 
+> **Verification status (1 October 2026):** Google's review of the shared OAuth app is still running, so Google currently only lets accounts on its test-user list sign in through it; everyone else sees the "has not completed the Google verification process" screen and needs their own OAuth app (next note). The last open step for the shared app is a yearly independent security assessment (CASA, Cloud Application Security Assessment) that Google has requested. Because email-mcp has no server of its own, its applicability is being clarified with Google. Details and current status: [email.lumitra.co/privacy#google-verification](https://email.lumitra.co/privacy#google-verification), tracked in [issue #1](https://github.com/marlinjai/email-mcp/issues/1).
+
 > **Note:** If you prefer to use your own OAuth app instead of the shared one this package ships with, create a Desktop OAuth 2.0 Client in the [Google Cloud Console](https://console.cloud.google.com/) with the Gmail API enabled, then set `EMAIL_MCP_GMAIL_CLIENT_ID` and `EMAIL_MCP_GMAIL_CLIENT_SECRET` in the environment before running the setup wizard (and in the MCP server's environment, since re-authentication uses the same variables). This gives you your own token lifecycle, independent of the publisher's Cloud project, and sidesteps Google's unverified-app warning and 100-test-user cap for your own account(s) once you add yourself as a test user on your own app.
 
 ### Outlook
@@ -115,7 +117,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 # Optionally enter SMTP host and port for sending
 ```
 
-## Available Tools (32)
+## Available Tools (36)
 
 ### Account Management (4)
 
@@ -163,13 +165,14 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 | `email_get_labels` | List all labels with counts (Gmail only) |
 | `email_get_categories` | List all categories (Outlook only) |
 
-### Batch Operations (3)
+### Batch Operations (4)
 
 | Tool | Description |
 |------|-------------|
 | `email_batch_delete` | Delete multiple emails at once (up to 1000 for Gmail, batches of 20 for Outlook, UID ranges for IMAP) |
 | `email_batch_move` | Move multiple emails to a folder in a single call |
 | `email_batch_mark` | Mark multiple emails read/unread, starred, or flagged at once |
+| `email_batch_label` | Add or remove labels on multiple emails at once (native batch call on Gmail, one by one elsewhere) |
 
 All batch tools accept a `sourceFolder` parameter for IMAP/iCloud and include a sequential fallback for maximum compatibility.
 
@@ -184,6 +187,32 @@ All batch tools accept a `sourceFolder` parameter for IMAP/iCloud and include a 
 | `email_delete_block_rule` | Delete a standing block rule — use to undo a rule that turned out too broad |
 
 Gmail and Outlook only for the rule tools; `email_report_spam`/`email_batch_report_spam` work on every provider (iCloud/IMAP fall back to a best-effort move into the account's Junk-typed folder, with no vendor ML training signal since generic IMAP has none to train).
+
+### Forwarding Rules (3)
+
+| Tool | Description |
+|------|-------------|
+| `email_create_forward_rule` | Create a standing rule that forwards future mail matching a pattern (sender domain/address, subject, or header content) to another address, for example vendor invoices to a bookkeeping address. The original stays in the inbox unless `keepInInbox` is `false`. Creating the same rule twice returns the existing one |
+| `email_list_forward_rules` | List every rule on an account that forwards mail elsewhere, including rules made by hand in Gmail or Outlook: an audit of where mail is being sent |
+| `email_delete_forward_rule` | Delete a forwarding rule by id |
+
+Gmail and Outlook only. iCloud and generic IMAP have no server-side rule mechanism; set the rule in the provider's own settings there.
+
+**Forwarding is off until you allow a target.** A standing forward rule copies future mail out of your mailbox, and an assistant that reads mail can be asked to create one by the mail it reads. So `email_create_forward_rule` only accepts addresses you listed yourself in `EMAIL_MCP_FORWARD_ALLOWLIST` (comma-separated), in the environment of the server. No tool can change that list:
+
+```json
+{
+  "mcpServers": {
+    "email": {
+      "command": "npx",
+      "args": ["@marlinjai/email-mcp"],
+      "env": { "EMAIL_MCP_FORWARD_ALLOWLIST": "expenses@example.com" }
+    }
+  }
+}
+```
+
+On Gmail the target must also be a forwarding address of the account: add it once under Gmail Settings, "Forwarding and POP/IMAP", "Add a forwarding address", and confirm the email Google sends to it. Outlook needs no such step, which is why the allowlist exists. Outlook accounts authenticated before the block-rule tools existed need to re-run the setup wizard once, as for those tools.
 
 ## Usage with Claude Code
 
@@ -267,7 +296,7 @@ can reach it.
 
 ## Support
 
-If this project is useful to you, consider supporting its development:
+email-mcp is free and has no paid tier. Its one fixed cost is the independent security assessment Google requires every year for the shared Gmail sign-in (CASA, Cloud Application Security Assessment): 675 US dollars a year. It is the last open step before Google lets everyone use the one-command Gmail setup. Donations are collected until 2 November 2026, the day the assessment has to start, and the maintainer pays what is missing then. Progress is shown at [email.lumitra.co](https://email.lumitra.co/#fund-the-audit).
 
 - [GitHub Sponsors](https://github.com/sponsors/marlinjai)
 - [Buy Me a Coffee](https://buymeacoffee.com/marlinjai)

@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'scripts/funding.mjs'
       - '.github/workflows/deploy-site.yml'
+  # Once a day, so the funding bar on the homepage follows the donations.
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -22,8 +26,26 @@ jobs:
       # (HTML itself is never cached), so a redesign can't hide behind stale CSS.
       - name: Cache-bust stylesheet with commit SHA
         run: sed -i -E 's#(href="style\.css)(\?v=[^"]*)?"#\1?v='"${GITHUB_SHA::8}"'"#g' site/*.html && grep -ho 'style\.css?v=[^"]*' site/index.html
+      # Reads the donation totals and renders the funding bar into the page
+      # and site/funding.json. Pages replaces the whole site on each deploy, so
+      # this runs on every trigger, not only the daily one. Without a token a
+      # platform is left out; with a token and a failing request the script
+      # writes the last published amount back and exits non-zero, the deploy
+      # still goes out, and the last step turns the run red.
+      - name: Render funding bar
+        id: funding
+        continue-on-error: true
+        env:
+          GH_SPONSORS_TOKEN: ${{ secrets.GH_SPONSORS_TOKEN }}
+          BMC_TOKEN: ${{ secrets.BMC_TOKEN }}
+        run: node scripts/funding.mjs
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: afe1136796a1aaacf06fd5e0d1ffa0a7
           command: pages deploy site/ --project-name=email-mcp --branch=main
+      - name: Fail the run if the funding bar could not be updated
+        if: steps.funding.outcome == 'failure'
+        run: |
+          echo "::error::The funding bar was not updated; the site shows the last known amount. See the 'Render funding bar' step."
+          exit 1
