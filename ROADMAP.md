@@ -75,7 +75,10 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       are documented but unobserved (neither account had members), so the first membership is
       the real test: a mismatch turns the deploy run red and the bar keeps the last amount.
       If the developer dashboard answers "400 Request Header Or Cookie Too Large", delete the
-      analytics cookies for buymeacoffee.com in that browser.
+      analytics cookies for buymeacoffee.com in that browser. Donations in euros are converted
+      with a fixed rate in `scripts/funding.mjs` (1.1298 US dollars per euro, 2026-10-01); it
+      matters only once a euro donation arrives, and setting the Buy Me a Coffee account to
+      US dollars removes the conversion.
       The setup wizard's donation line
       is in the package since 1.9.0. No grant application, decided by Marlin on 2026-10-01 after a fit
       assessment (`~/software-dev/decision-pages/2026-10-01-email-mcp-grant-fit.html`): NLnet's
