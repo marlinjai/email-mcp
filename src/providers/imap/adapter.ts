@@ -621,7 +621,11 @@ export class ImapAdapter implements EmailProvider {
    *
    * A reply draft keeps its place in the thread: when the caller passes no
    * `inReplyTo`, the In-Reply-To and References headers of the old revision
-   * are copied into the new one.
+   * are copied into the new one. The same goes for files: when the caller
+   * passes no `attachments`, the old revision's attachments are copied over
+   * (a given list, an empty one included, replaces them). Images embedded in
+   * the old HTML body are not files and are not copied: the new body replaces
+   * the old one.
    */
   async updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }> {
     const client = await this.ensureConnected();
@@ -636,13 +640,25 @@ export class ImapAdapter implements EmailProvider {
     let rawMessage: Buffer;
     try {
       let next = params;
-      if (params.inReplyTo === undefined) {
+      const keepThread = params.inReplyTo === undefined;
+      const keepFiles = params.attachments === undefined;
+      if (keepThread || keepFiles) {
         const old = await client.fetchOne(String(draftId), { source: true, uid: true }, { uid: true });
         if (old && old.source) {
           const parsed = await simpleParser(old.source);
-          const references = ([] as string[]).concat(parsed.references ?? []);
-          if (parsed.inReplyTo) {
-            next = { ...params, inReplyTo: parsed.inReplyTo, references: params.references ?? references };
+          if (keepThread && parsed.inReplyTo) {
+            const references = ([] as string[]).concat(parsed.references ?? []);
+            next = { ...next, inReplyTo: parsed.inReplyTo, references: params.references ?? references };
+          }
+          if (keepFiles) {
+            const files = (parsed.attachments || [])
+              .filter((att: any) => !att.related)
+              .map((att: any, i: number) => ({
+                filename: att.filename || `attachment-${i + 1}`,
+                content: att.content as Buffer,
+                contentType: att.contentType || 'application/octet-stream',
+              }));
+            if (files.length) next = { ...next, attachments: files };
           }
         }
       }

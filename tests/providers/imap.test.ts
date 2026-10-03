@@ -940,8 +940,16 @@ describe('ImapAdapter threads, drafts, attachments', () => {
       expect(parsed.references).toBeUndefined();
     });
 
-    it('the caller\'s inReplyTo wins and the old revision is not read', async () => {
+    it('the caller\'s inReplyTo wins over the old revision\'s', async () => {
+      await storedDraft({ inReplyTo: '<orig@test.com>', references: ['<orig@test.com>'] });
       await adapter.updateDraft('99', { ...update, inReplyTo: '<other@test.com>', references: ['<other@test.com>'] });
+      const parsed = await appended();
+      expect(parsed.inReplyTo).toBe('<other@test.com>');
+      expect(parsed.references).toBe('<other@test.com>');
+    });
+
+    it('the old revision is not read when the caller names both the reply headers and the files', async () => {
+      await adapter.updateDraft('99', { ...update, inReplyTo: '<other@test.com>', references: ['<other@test.com>'], attachments: [] });
       expect((adapter as any).client.fetchOne).not.toHaveBeenCalled();
       expect((await appended()).inReplyTo).toBe('<other@test.com>');
     });
@@ -969,6 +977,64 @@ describe('ImapAdapter threads, drafts, attachments', () => {
       expect(client.getMailboxLock).toHaveBeenCalledWith('Sent');
       expect(client.append.mock.calls[0][0]).toBe('Sent');
       expect((await appended()).inReplyTo).toBe('<orig@test.com>');
+    });
+
+    describe('and keeps its files', () => {
+      const files = [
+        { filename: 'Invoice 59.pdf', contentType: 'application/pdf', content: Buffer.from('%PDF-1.4 invoice'), related: false },
+        { filename: 'logo.png', contentType: 'image/png', content: Buffer.from('png'), related: true, cid: 'logo@x' },
+        { contentType: 'text/plain', content: Buffer.from('no name') },
+      ];
+      const attachmentsOf = async () =>
+        (await appended()).attachments.map((a) => ({ filename: a.filename, type: a.contentType, text: a.content.toString() }));
+
+      it('carries the old revision\'s files over when the update names none, without images embedded in the old body', async () => {
+        await storedDraft({ attachments: files });
+
+        await adapter.updateDraft('99', update);
+
+        expect(await attachmentsOf()).toEqual([
+          { filename: 'Invoice 59.pdf', type: 'application/pdf', text: '%PDF-1.4 invoice' },
+          { filename: 'attachment-2', type: 'text/plain', text: 'no name' },
+        ]);
+      });
+
+      it('keeps the files and the reply headers together', async () => {
+        await storedDraft({ inReplyTo: '<orig@test.com>', references: ['<orig@test.com>'], attachments: files });
+
+        await adapter.updateDraft('99', update);
+
+        const parsed = await appended();
+        expect(parsed.inReplyTo).toBe('<orig@test.com>');
+        expect(parsed.attachments.map((a) => a.filename)).toEqual(['Invoice 59.pdf', 'attachment-2']);
+      });
+
+      it('replaces the old files when the update names its own', async () => {
+        await storedDraft({ attachments: files });
+
+        await adapter.updateDraft('99', {
+          ...update,
+          attachments: [{ filename: 'new.txt', content: Buffer.from('new'), contentType: 'text/plain' }],
+        });
+
+        expect(await attachmentsOf()).toEqual([{ filename: 'new.txt', type: 'text/plain', text: 'new' }]);
+      });
+
+      it('removes the old files when the update gives an empty list', async () => {
+        await storedDraft({ attachments: files });
+
+        await adapter.updateDraft('99', { ...update, attachments: [] });
+
+        expect(await attachmentsOf()).toEqual([]);
+      });
+
+      it('leaves a draft without files as it is', async () => {
+        await storedDraft({ attachments: [] });
+
+        await adapter.updateDraft('99', update);
+
+        expect(await attachmentsOf()).toEqual([]);
+      });
     });
   });
 });

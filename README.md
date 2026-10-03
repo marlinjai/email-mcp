@@ -141,7 +141,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 
 ### Sending & Drafts (6)
 
-`email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an optional `attachments` list. Each entry is either `{ path }` (a file in the attachments folder, see below) or `{ content, filename }` (base64), with an optional `contentType` (inferred from the extension otherwise). The total is capped at 25 MB; Outlook accepts up to 3 MB per message through this server. On `email_draft_update` a list replaces the draft's files and an empty list removes them.
+`email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an optional `attachments` list. Each entry is either `{ path }` (a file in the attachments folder, see below) or `{ content, filename }` (base64), with an optional `contentType` (inferred from the extension otherwise). The total is capped at 25 MB; Outlook accepts up to 3 MB per message through this server. On `email_draft_update` a list replaces the draft's files, an empty list removes them, and no list keeps the files the draft has.
 
 Replies stay in their thread: `email_reply` sends inside the original conversation on Gmail and Outlook (and sets the `In-Reply-To` and `References` headers everywhere), `email_draft_create` with `inReplyToEmailId` saves a reply draft in that thread, and `email_draft_update` keeps a reply draft there.
 

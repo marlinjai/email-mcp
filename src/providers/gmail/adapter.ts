@@ -230,28 +230,40 @@ export class GmailAdapter implements EmailProvider {
   }
 
   /**
-   * drafts.update replaces the whole message, so a reply draft would fall out
-   * of its thread. When the caller names no thread, the thread and the reply
-   * headers of the stored draft are carried over into the new message.
+   * drafts.update replaces the whole message, so what the caller does not
+   * name would be lost: a reply draft would fall out of its thread and a
+   * draft's files would be dropped. So when the caller names no thread, the
+   * thread and the reply headers of the stored draft are carried over, and
+   * when the caller names no attachments, the stored draft's files are. A
+   * given list (an empty one included) replaces the files.
    */
   async updateDraft(draftId: string, update: SendEmailParams): Promise<{ id: string }> {
     const gmail = this.ensureConnected();
     let params = update;
-    if (update.threadId === undefined) {
+    const keepThread = update.threadId === undefined;
+    const keepFiles = update.attachments === undefined;
+    if (keepThread || keepFiles) {
       const existing = await gmail.users.drafts.get({
         userId: 'me',
         id: draftId,
-        // Ids, labels and headers, no body. drafts.get has no way to ask for
-        // single headers (messages.get does), so all of them come back.
-        format: 'metadata',
+        // 'metadata' is ids, labels and headers, no body (drafts.get has no
+        // way to ask for single headers, so all of them come back). The parts
+        // that list the files only come with 'full'.
+        format: keepFiles ? 'full' : 'metadata',
       });
       const message = existing.data.message;
-      const header = (name: string): string | undefined =>
-        (message?.payload?.headers || []).find((h) => (h.name || '').toLowerCase() === name)?.value || undefined;
-      const inReplyTo = update.inReplyTo ?? header('in-reply-to');
-      const references = update.references ?? header('references')?.split(/\s+/).filter(Boolean);
-      if (message?.threadId && inReplyTo) {
-        params = { ...update, threadId: message.threadId, inReplyTo, references: references?.length ? references : [inReplyTo] };
+      if (keepThread) {
+        const header = (name: string): string | undefined =>
+          (message?.payload?.headers || []).find((h) => (h.name || '').toLowerCase() === name)?.value || undefined;
+        const inReplyTo = update.inReplyTo ?? header('in-reply-to');
+        const references = update.references ?? header('references')?.split(/\s+/).filter(Boolean);
+        if (message?.threadId && inReplyTo) {
+          params = { ...params, threadId: message.threadId, inReplyTo, references: references?.length ? references : [inReplyTo] };
+        }
+      }
+      if (keepFiles && message?.id) {
+        const stored = await this.storedAttachments(message.id, message.payload);
+        if (stored.length) params = { ...params, attachments: stored };
       }
     }
     const raw = await this.buildRaw(params);
@@ -742,6 +754,46 @@ export class GmailAdapter implements EmailProvider {
   private threadFor(params: SendEmailParams): { threadId?: string } {
     const belongs = params.threadId && params.inReplyTo && params.references?.length && params.subject.trim();
     return belongs ? { threadId: params.threadId } : {};
+  }
+
+  /**
+   * The files of a stored message, with their bytes: every part that has a
+   * file name, at any depth. Large files are referenced by an attachment id
+   * and fetched; small ones can come inline in the part. A fetch that fails
+   * is not swallowed: a draft update built on it would drop that file.
+   */
+  private async storedAttachments(
+    messageId: string,
+    payload: gmail_v1.Schema$MessagePart | undefined,
+  ): Promise<NonNullable<SendEmailParams['attachments']>> {
+    const gmail = this.ensureConnected();
+    const files: NonNullable<SendEmailParams['attachments']> = [];
+    const visit = async (part: gmail_v1.Schema$MessagePart | undefined): Promise<void> => {
+      if (!part) return;
+      // An image embedded in the HTML body (inline, addressed by Content-ID)
+      // belongs to the old body, which the update replaces. It is not a file.
+      const partHeader = (name: string) =>
+        (part.headers || []).find((h) => (h.name || '').toLowerCase() === name)?.value || '';
+      const embedded = /^\s*inline/i.test(partHeader('content-disposition')) && partHeader('content-id') !== '';
+      if (part.filename && !embedded) {
+        let data = part.body?.data;
+        if (!data && part.body?.attachmentId) {
+          const res = await gmail.users.messages.attachments.get({ userId: 'me', messageId, id: part.body.attachmentId });
+          data = res.data.data;
+        }
+        if (data === undefined || data === null) {
+          throw new Error(`Could not read the draft's attachment ${part.filename}; the draft was not changed.`);
+        }
+        files.push({
+          filename: part.filename,
+          content: Buffer.from(data, 'base64url'),
+          contentType: part.mimeType || 'application/octet-stream',
+        });
+      }
+      for (const child of part.parts || []) await visit(child);
+    };
+    await visit(payload);
+    return files;
   }
 
   /**

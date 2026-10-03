@@ -32,16 +32,16 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       25 MB, and the Outlook draft paths carry attachments. Decided by Marlin on 2026-10-03: files
       only from that one folder, because a path chosen by the assistant could otherwise mail out
       any local file. Open: a live test per provider (Gmail, Outlook, iCloud or IMAP: send and
-      draft with a PDF), (the setting itself is in place, see the end of this line). Also open: on Gmail and IMAP
-      `email_draft_update` rewrites the whole message, so a draft's existing files are dropped
-      unless they are passed again (Outlook keeps them); the tool description says so, the fix
-      is to carry them over. Outlook is limited to 3 MB per message
+      draft with a PDF), (the setting itself is in place, see the end of this line). Since 2026-10-04 a draft
+      update keeps the draft's files on Gmail, iCloud and IMAP too when none are passed (not
+      yet released; the live test also covers updating a draft that has a file). Outlook is
+      limited to 3 MB per message
       with a clear error; upload sessions for larger files are not built, by decision of
       2026-10-03. Built on top (pull request #21 by @jonboy648): threaded replies, reply drafts
       and opt-in forwarding of the original attachments; the live test per provider also
       covers a threaded reply and a reply draft. Prepared for release as 1.10.0 on 2026-10-03 (tag and publish pending), and
       `EMAIL_MCP_ATTACHMENTS_DIR` is set to `~/Documents/email-outbox` in the Infisical Dotfiles
-      project for Marlin's own use (2026-10-03)
+      project for Marlin's own use (2026-10-04)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)

@@ -319,7 +319,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema.describe(
-        "Files to attach. When given, they replace the draft's current attachments; an empty list removes them all. When omitted, Outlook keeps the existing files but Gmail and IMAP drop them (those providers rewrite the whole message), so pass them again to keep them.",
+        "Files to attach. When given, they replace the draft's current attachments; an empty list removes them all. When omitted, the draft keeps the files it has.",
       ),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when the draft is not in the default Drafts folder)'),
     },
