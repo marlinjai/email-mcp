@@ -83,6 +83,7 @@ describe('Sending tools', () => {
     mockProvider = makeMockProvider();
     accountManager = {
       getProvider: vi.fn().mockResolvedValue(mockProvider),
+      getAccountEmail: vi.fn().mockResolvedValue('me@example.com'),
     } as unknown as AccountManager;
     registerSendingTools(server, accountManager);
   });
@@ -170,7 +171,7 @@ describe('Sending tools', () => {
       });
 
       // Should fetch the original email
-      expect(mockProvider.getEmail).toHaveBeenCalledWith('orig-1');
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('orig-1', undefined);
 
       // Should send with threading headers and reply to sender
       expect(mockProvider.sendEmail).toHaveBeenCalledWith(
@@ -225,16 +226,14 @@ describe('Sending tools', () => {
       });
 
       const sendCall = (mockProvider.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0][0] as SendEmailParams;
-      // To should include sender + original to recipients
-      expect(sendCall.to).toEqual(
-        expect.arrayContaining([
-          { email: 'alice@example.com', name: 'Alice' },
-          { email: 'me@example.com' },
-          { email: 'bob@example.com' },
-        ]),
-      );
+      // To is the sender plus the original To recipients, without the account's own address
+      expect(sendCall.to).toEqual([
+        { email: 'alice@example.com', name: 'Alice' },
+        { email: 'bob@example.com' },
+      ]);
       // CC should include original CC
       expect(sendCall.cc).toEqual([{ email: 'carol@example.com' }]);
+      expect(accountManager.getAccountEmail).toHaveBeenCalledWith('acct-1');
     });
   });
 
@@ -259,7 +258,7 @@ describe('Sending tools', () => {
         to: [{ email: 'dave@example.com', name: 'Dave' }],
       });
 
-      expect(mockProvider.getEmail).toHaveBeenCalledWith('fwd-1');
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('fwd-1', undefined);
 
       const sendCall = (mockProvider.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0][0] as SendEmailParams;
       expect(sendCall.to).toEqual([{ email: 'dave@example.com', name: 'Dave' }]);
@@ -509,6 +508,359 @@ describe('Sending tools', () => {
         accountId: 'acct-1', draftId: 'draft-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'B' }, attachments: [],
       });
       expect(mockProvider.updateDraft).toHaveBeenCalledWith('draft-1', expect.objectContaining({ attachments: [] }), undefined);
+    });
+  });
+
+  describe('reply recipients and threading', () => {
+    const original = {
+      id: 'graph-msg-1',
+      threadId: 'gmail-thread-1',
+      from: { email: 'me@example.com', name: 'Me' },
+      to: [{ email: 'client@example.com', name: 'Client' }],
+      cc: [{ email: 'carol@example.com' }],
+    };
+
+    beforeEach(() => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail(original));
+    });
+
+    it('email_reply passes threadId and the provider item id for threading', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' } });
+      expect(mockProvider.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: 'gmail-thread-1', replyToGraphId: 'graph-msg-1', inReplyTo: '<msg-1@example.com>' }),
+      );
+    });
+
+    it('email_reply `to` replaces the default recipient (a reply to your own sent mail)', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' }, to: [{ email: 'client@example.com' }],
+      });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to).toEqual([{ email: 'client@example.com' }]);
+    });
+
+    it('email_reply additionalRecipients are appended without duplicates', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' },
+        additionalRecipients: [{ email: 'ME@example.com' }, { email: 'dave@example.com' }],
+      });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to.map((c: any) => c.email)).toEqual([
+        'me@example.com', 'dave@example.com',
+      ]);
+    });
+
+    it('email_reply cc overrides the cc carried over by replyAll, and bcc is passed', async () => {
+      await callTool(server, 'email_reply', {
+        accountId: 'acct-1', emailId: 'graph-msg-1', body: { text: 'B' }, replyAll: true,
+        cc: [{ email: 'erin@example.com' }], bcc: [{ email: 'frank@example.com' }],
+      });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.cc).toEqual([{ email: 'erin@example.com' }]);
+      expect(params.bcc).toEqual([{ email: 'frank@example.com' }]);
+    });
+
+    it('email_draft_create with inReplyToEmailId creates a threaded reply draft', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: 'graph-msg-1',
+      });
+      expect(mockProvider.createDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inReplyTo: '<msg-1@example.com>', references: ['<msg-1@example.com>'],
+          threadId: 'gmail-thread-1', replyToGraphId: 'graph-msg-1',
+        }),
+      );
+    });
+
+    it('email_draft_create without inReplyToEmailId stays a standalone draft', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'New', body: { text: 'B' },
+      });
+      const params = (mockProvider.createDraft as any).mock.calls[0][0];
+      expect(params.inReplyTo).toBeUndefined();
+      expect(params.replyToGraphId).toBeUndefined();
+      expect(mockProvider.getEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reply-all recipients', () => {
+    const replyAll = async (original: Partial<Email>, extra: Record<string, unknown> = {}) => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail(original));
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' }, replyAll: true, ...extra });
+      return (mockProvider.sendEmail as any).mock.calls[0][0] as SendEmailParams;
+    };
+
+    it('drops the own address from to and cc, whatever its case', async () => {
+      const params = await replyAll({
+        from: { email: 'alice@example.com' },
+        to: [{ email: 'Me@Example.com', name: 'Me' }, { email: 'bob@example.com' }],
+        cc: [{ email: 'ME@EXAMPLE.COM' }, { email: 'carol@example.com' }],
+      });
+      expect(params.to).toEqual([{ email: 'alice@example.com' }, { email: 'bob@example.com' }]);
+      expect(params.cc).toEqual([{ email: 'carol@example.com' }]);
+    });
+
+    it('replies to the real correspondents when the original was sent by the account itself', async () => {
+      const params = await replyAll({
+        from: { email: 'me@example.com' }, to: [{ email: 'client@example.com' }], cc: undefined,
+      });
+      expect(params.to).toEqual([{ email: 'client@example.com' }]);
+      expect(params.cc).toBeUndefined();
+    });
+
+    it('lists each address once across to and cc', async () => {
+      const params = await replyAll({
+        from: { email: 'alice@example.com' },
+        to: [{ email: 'ALICE@example.com' }, { email: 'bob@example.com' }],
+        cc: [{ email: 'Bob@Example.com' }, { email: 'carol@example.com' }, { email: 'carol@example.com' }],
+      });
+      expect(params.to).toEqual([{ email: 'alice@example.com' }, { email: 'bob@example.com' }]);
+      expect(params.cc).toEqual([{ email: 'carol@example.com' }]);
+    });
+
+    it('falls back to the original sender when nobody else is left (a mail sent to yourself only)', async () => {
+      const params = await replyAll({
+        from: { email: 'me@example.com', name: 'Me' }, to: [{ email: 'me@example.com' }], cc: [{ email: 'me@example.com' }],
+      });
+      expect(params.to).toEqual([{ email: 'me@example.com', name: 'Me' }]);
+      expect(params.cc).toEqual([]);
+    });
+
+    it('keeps everyone when the account address is not known', async () => {
+      (accountManager.getAccountEmail as any).mockResolvedValue(undefined);
+      const params = await replyAll({
+        from: { email: 'alice@example.com' }, to: [{ email: 'me@example.com' }], cc: undefined,
+      });
+      expect(params.to).toEqual([{ email: 'alice@example.com' }, { email: 'me@example.com' }]);
+    });
+
+    it('keeps an address the caller put in `to` and removes it from the carried-over cc', async () => {
+      const params = await replyAll(
+        { from: { email: 'alice@example.com' }, to: [{ email: 'bob@example.com' }], cc: [{ email: 'carol@example.com' }] },
+        { to: [{ email: 'carol@example.com' }] },
+      );
+      expect(params.to).toEqual([{ email: 'carol@example.com' }]);
+      expect(params.cc).toEqual([]);
+    });
+
+    it('a plain reply does not look up the account address', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ from: { email: 'me@example.com' } }));
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' } });
+      expect(accountManager.getAccountEmail).not.toHaveBeenCalled();
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to).toEqual([{ email: 'me@example.com' }]);
+    });
+  });
+
+  describe('reply headers and thread', () => {
+    it('email_reply passes threadId, In-Reply-To, References and the Re: subject through', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({
+        id: 'gmail-msg-2', threadId: 'gmail-thread-1', subject: 'Offer',
+        headers: { 'message-id': '<m2@example.com>', references: '<m0@example.com> <m1@example.com>' },
+      }));
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'gmail-msg-2', body: { text: 'B' } });
+      expect(mockProvider.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+        threadId: 'gmail-thread-1',
+        inReplyTo: '<m2@example.com>',
+        references: ['<m0@example.com>', '<m1@example.com>', '<m2@example.com>'],
+        subject: 'Re: Offer',
+        replyToGraphId: 'gmail-msg-2',
+      }));
+    });
+
+    it('takes the Message-ID out of a header value that still carries the header name', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ headers: { 'message-id': 'Message-ID: <m9@example.com>' } }));
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' } });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.inReplyTo).toBe('<m9@example.com>');
+      expect(params.references).toEqual(['<m9@example.com>']);
+    });
+
+    it('sets no reply headers when the original has no Message-ID, and still names the thread', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ id: 'graph-1', threadId: 'conv-1', headers: undefined }));
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'graph-1', body: { text: 'B' } });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.inReplyTo).toBeUndefined();
+      expect(params.references).toBeUndefined();
+      expect(params.threadId).toBe('conv-1');
+      expect(params.replyToGraphId).toBe('graph-1');
+    });
+
+    it('email_reply reads the original from sourceFolder', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: '42', sourceFolder: 'Archive', body: { text: 'B' } });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', 'Archive');
+      expect(mockProvider.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ inReplyTo: '<msg-1@example.com>' }));
+    });
+
+    it('email_reply does not send when the original is not in the folder', async () => {
+      (mockProvider.getEmail as any).mockRejectedValue(new Error('Email 42 not found'));
+      const result = await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: '42', sourceFolder: 'Archive', body: { text: 'B' } });
+      expect(JSON.parse(result.content[0].text).error).toBe('Email 42 not found');
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('email_draft_create reads the replied-to email from inReplyToSourceFolder', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: '42', inReplyToSourceFolder: 'Archive',
+      });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', 'Archive');
+      expect(mockProvider.createDraft).toHaveBeenCalledWith(expect.objectContaining({ inReplyTo: '<msg-1@example.com>' }));
+    });
+
+    it('email_draft_create without a folder passes none, and ignores the folder without inReplyToEmailId', async () => {
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' }, inReplyToEmailId: '42',
+      });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('42', undefined);
+      (mockProvider.getEmail as any).mockClear();
+      await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'New', body: { text: 'B' }, inReplyToSourceFolder: 'Archive',
+      });
+      expect(mockProvider.getEmail).not.toHaveBeenCalled();
+    });
+
+    it('email_draft_create creates no draft when the replied-to email cannot be read', async () => {
+      (mockProvider.getEmail as any).mockRejectedValue(new Error('Email 42 not found'));
+      const result = await callTool(server, 'email_draft_create', {
+        accountId: 'acct-1', to: [{ email: 'client@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+        inReplyToEmailId: '42', inReplyToSourceFolder: 'Archive',
+      });
+      expect(JSON.parse(result.content[0].text).error).toBe('Email 42 not found');
+      expect(mockProvider.createDraft).not.toHaveBeenCalled();
+    });
+
+    it('email_reply treats an empty `to` as not given', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' }, to: [] });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].to).toEqual([{ email: 'alice@example.com', name: 'Alice' }]);
+    });
+
+    it('email_reply passes an empty cc through, so the provider can clear it', async () => {
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { text: 'B' }, replyAll: true, cc: [] });
+      expect((mockProvider.sendEmail as any).mock.calls[0][0].cc).toEqual([]);
+    });
+
+    it('a plain email_send carries no thread and no reply headers', async () => {
+      await callTool(server, 'email_send', {
+        accountId: 'acct-1', to: [{ email: 'bob@example.com' }], subject: 'New', body: { text: 'B' },
+      });
+      const params = (mockProvider.sendEmail as any).mock.calls[0][0];
+      expect(params.threadId).toBeUndefined();
+      expect(params.inReplyTo).toBeUndefined();
+      expect(params.references).toBeUndefined();
+      expect(params.replyToGraphId).toBeUndefined();
+    });
+
+    it('email_draft_update passes no thread data: the provider keeps the thread', async () => {
+      await callTool(server, 'email_draft_update', {
+        accountId: 'acct-1', draftId: 'draft-1', to: [{ email: 'bob@example.com' }], subject: 'Re: Hello', body: { text: 'B' },
+      });
+      const params = (mockProvider.updateDraft as any).mock.calls[0][1];
+      expect(params.threadId).toBeUndefined();
+      expect(params.inReplyTo).toBeUndefined();
+    });
+  });
+
+  describe('forwarding the original attachments', () => {
+    const MB = 1024 * 1024;
+    const pdf = { id: 'att-1', filename: 'spec.pdf', contentType: 'application/pdf', size: 3 };
+    const forward = (extra: Record<string, unknown> = {}) =>
+      callTool(server, 'email_forward', { accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'dave@example.com' }], ...extra });
+    const sent = () => (mockProvider.sendEmail as any).mock.calls[0][0] as SendEmailParams;
+
+    beforeEach(() => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ attachments: [pdf] }));
+      (mockProvider.getAttachment as any).mockResolvedValue({ data: Buffer.from('pdf'), meta: {} });
+    });
+
+    it('leaves them out by default', async () => {
+      await forward();
+      expect(sent().attachments).toBeUndefined();
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+    });
+
+    it('leaves them out when told to, and still sends added files', async () => {
+      await forward({
+        includeOriginalAttachments: false,
+        attachments: [{ content: Buffer.from('x').toString('base64'), filename: 'note.txt' }],
+      });
+      expect(sent().attachments!.map((a) => a.filename)).toEqual(['note.txt']);
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+    });
+
+    it('includes them when asked, ahead of added files', async () => {
+      await forward({
+        includeOriginalAttachments: true,
+        cc: [{ email: 'erin@example.com' }],
+        attachments: [{ content: Buffer.from('x').toString('base64'), filename: 'note.txt' }],
+      });
+      expect(sent().attachments).toEqual([
+        { filename: 'spec.pdf', content: Buffer.from('pdf'), contentType: 'application/pdf' },
+        { filename: 'note.txt', content: Buffer.from('x'), contentType: 'text/plain' },
+      ]);
+      expect(sent().cc).toEqual([{ email: 'erin@example.com' }]);
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1', undefined);
+    });
+
+    it('keeps the order of several original attachments', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({
+        attachments: [pdf, { id: 'att-2', filename: 'b.png', contentType: 'image/png', size: 3 }],
+      }));
+      await forward({ includeOriginalAttachments: true });
+      expect(sent().attachments!.map((a) => a.filename)).toEqual(['spec.pdf', 'b.png']);
+    });
+
+    it('sends without attachments when asked but the original has none', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ attachments: [] }));
+      await forward({ includeOriginalAttachments: true });
+      expect(sent().attachments).toBeUndefined();
+    });
+
+    it('passes sourceFolder to the message and the attachment lookup', async () => {
+      await forward({ includeOriginalAttachments: true, sourceFolder: 'Archive' });
+      expect(mockProvider.getEmail).toHaveBeenCalledWith('msg-1', 'Archive');
+      expect(mockProvider.getAttachment).toHaveBeenCalledWith('msg-1', 'att-1', 'Archive');
+    });
+
+    it('refuses originals over the 25 MB cap by their listed size, before fetching anything', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({
+        attachments: [{ ...pdf, size: 20 * MB }, { id: 'att-2', filename: 'b.zip', contentType: 'application/zip', size: 6 * MB }],
+      }));
+      const result = await forward({ includeOriginalAttachments: true });
+      expect(JSON.parse(result.content[0].text).error).toBe('Attachments total 26.0 MB, over the 25.0 MB limit');
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('counts added files and originals together', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ attachments: [{ ...pdf, size: 25 * MB }] }));
+      const result = await forward({
+        includeOriginalAttachments: true,
+        attachments: [{ content: Buffer.alloc(MB).toString('base64'), filename: 'extra.bin' }],
+      });
+      expect(JSON.parse(result.content[0].text).error).toBe('Attachments total 26.0 MB, over the 25.0 MB limit');
+      expect(mockProvider.getAttachment).not.toHaveBeenCalled();
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('checks the fetched bytes too, when the listed size was missing', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ attachments: [{ ...pdf, size: 0 }] }));
+      (mockProvider.getAttachment as any).mockResolvedValue({ data: Buffer.alloc(26 * MB), meta: {} });
+      const result = await forward({ includeOriginalAttachments: true });
+      expect(JSON.parse(result.content[0].text).error).toBe('Attachments total 26.0 MB, over the 25.0 MB limit');
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('accepts originals of exactly 25 MB', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ attachments: [{ ...pdf, size: 25 * MB }] }));
+      (mockProvider.getAttachment as any).mockResolvedValue({ data: Buffer.alloc(25 * MB), meta: {} });
+      await forward({ includeOriginalAttachments: true });
+      expect(sent().attachments).toHaveLength(1);
+    });
+
+    it('does not send when an original attachment cannot be fetched', async () => {
+      (mockProvider.getAttachment as any).mockRejectedValue(new Error('Attachment att-1 not found in email msg-1'));
+      const result = await forward({ includeOriginalAttachments: true });
+      expect(JSON.parse(result.content[0].text).error).toMatch(/att-1 not found/);
+      expect(mockProvider.sendEmail).not.toHaveBeenCalled();
     });
   });
 });

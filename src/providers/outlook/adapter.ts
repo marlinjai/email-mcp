@@ -252,8 +252,89 @@ export class OutlookAdapter implements EmailProvider {
     };
   }
 
+  /**
+   * Graph only threads a reply (conversationId, subject, quoted history)
+   * through the createReply flow: POST /me/messages and /me/sendMail always
+   * start a new conversation whatever In-Reply-To says. Build the reply draft,
+   * overlay our subject, body, recipients and attachments, and return its id.
+   * Note the body replaces Graph's pre-filled quoted history.
+   *
+   * Each attachment goes up in a request of its own, so the sizes are checked
+   * per file, and before createReply so that a file that is too big leaves no
+   * draft behind. A draft that cannot be filled is deleted again. (A draft
+   * whose send failed is kept, see `sendEmail`.)
+   */
+  private async createReplyDraft(params: SendEmailParams, replyToId: string): Promise<string> {
+    const client = this.ensureClient();
+    assertOutlookAttachmentSizes(params.attachments);
+    const draft = await client.api(`/me/messages/${encodeURIComponent(replyToId)}/createReply`).post({});
+    try {
+      await this.fillReplyDraft(draft.id, params);
+    } catch (error) {
+      throw await this.discardDraft(draft.id, error);
+    }
+    return draft.id;
+  }
+
+  private async fillReplyDraft(draftId: string, params: SendEmailParams): Promise<void> {
+    const client = this.ensureClient();
+    const toGraphRecipient = (c: { name?: string; email: string }) => ({
+      emailAddress: { name: c.name, address: c.email },
+    });
+    const patch: any = {
+      // Always the caller's subject: Graph pre-fills its own "RE: ..." one.
+      subject: params.subject,
+      body: { contentType: params.body.html ? 'html' : 'text', content: params.body.html || params.body.text || '' },
+    };
+    // A reply needs someone in To, so an empty list keeps the recipient
+    // Graph pre-filled (the original sender), like no list does.
+    if (params.to?.length) patch.toRecipients = params.to.map(toGraphRecipient);
+    // Cc and Bcc: a given list replaces what Graph pre-filled, and an empty
+    // one clears it.
+    if (params.cc !== undefined) patch.ccRecipients = params.cc.map(toGraphRecipient);
+    if (params.bcc !== undefined) patch.bccRecipients = params.bcc.map(toGraphRecipient);
+    await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(patch);
+    for (const att of params.attachments ?? []) {
+      await client.api(`/me/messages/${encodeURIComponent(draftId)}/attachments`).post(toGraphAttachment(att));
+    }
+  }
+
+  /**
+   * Deletes a reply draft that could not be filled, so a failed reply leaves
+   * nothing half-built in Drafts. Returns the error to throw: the original
+   * one, or, when the delete fails as well, the original message with a note
+   * that the draft is still there.
+   */
+  private async discardDraft(draftId: string, cause: unknown): Promise<unknown> {
+    try {
+      await this.ensureClient().api(`/me/messages/${encodeURIComponent(draftId)}`).delete();
+      return cause;
+    } catch (deleteError: any) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      return new Error(
+        `${message} (the reply draft ${draftId} could not be removed and was left in Drafts: ${deleteError?.message ?? deleteError})`,
+        { cause },
+      );
+    }
+  }
+
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     const client = this.ensureClient();
+    if (params.replyToGraphId) {
+      const draftId = await this.createReplyDraft(params, params.replyToGraphId);
+      try {
+        await client.api(`/me/messages/${encodeURIComponent(draftId)}/send`).post({});
+      } catch (error: any) {
+        // A failed send has no known outcome: after a timeout or a 5xx the
+        // mail can be on its way already, and a delete by this id could then
+        // remove the sent item. So the draft stays, and the error says where.
+        throw new Error(
+          `${error?.message ?? error} (the reply was saved as draft ${draftId} in Drafts and was not confirmed as sent; check Sent Items before sending it again)`,
+          { cause: error },
+        );
+      }
+      return { id: draftId };
+    }
     assertOutlookAttachmentSizes(params.attachments);
     const message = this.buildGraphMessage(params);
 
@@ -270,6 +351,9 @@ export class OutlookAdapter implements EmailProvider {
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
+    if (params.replyToGraphId) {
+      return { id: await this.createReplyDraft(params, params.replyToGraphId) };
+    }
     assertOutlookAttachmentSizes(params.attachments);
     const message = this.buildGraphMessage(params);
     if (params.attachments?.length) {
@@ -284,6 +368,8 @@ export class OutlookAdapter implements EmailProvider {
   async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
     assertOutlookAttachmentSizes(params.attachments);
+    // PATCH changes fields of the stored message and leaves its conversation
+    // alone, so a reply draft stays in its thread without any thread data here.
     const message = this.buildGraphMessage(params);
 
     await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(message);

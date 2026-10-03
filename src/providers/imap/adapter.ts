@@ -13,7 +13,7 @@ import type {
   BatchResult,
 } from '../../models/types.js';
 import { ProviderType, FolderType } from '../../models/types.js';
-import { mapImapFolder, mapParsedEmail } from './mapper.js';
+import { mapImapFolder, mapParsedEmail, imapAttachmentId } from './mapper.js';
 import { createSmtpTransport, sendViaSmtp } from './smtp.js';
 import { buildMimeMessage } from '../mime.js';
 
@@ -465,7 +465,7 @@ export class ImapAdapter implements EmailProvider {
   async getEmail(id: string, folder?: string): Promise<Email> {
     const client = await this.ensureConnected();
 
-    const targetFolder = folder || 'INBOX';
+    const targetFolder = folder ? await this.resolveFolder(folder) : 'INBOX';
     let lock;
     try {
       lock = await client.getMailboxLock(targetFolder);
@@ -487,14 +487,21 @@ export class ImapAdapter implements EmailProvider {
     }
   }
 
-  async getThread(threadId: string): Promise<Thread> {
+  /**
+   * IMAP has no thread object: the thread is the set of messages in ONE
+   * folder whose Message-ID, References or In-Reply-To name `threadId`.
+   * Messages of the same conversation in other folders (the own replies in
+   * Sent, for example) are not part of the result.
+   */
+  async getThread(threadId: string, sourceFolder?: string): Promise<Thread> {
     const client = await this.ensureConnected();
 
+    const folder = sourceFolder ? await this.resolveFolder(sourceFolder) : 'INBOX';
     let lock;
     try {
-      lock = await client.getMailboxLock('INBOX');
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
-      throw formatImapError(error, 'Failed to open folder "INBOX"');
+      throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
       // Search for messages that reference this thread ID via header
@@ -504,14 +511,14 @@ export class ImapAdapter implements EmailProvider {
       );
       const uids: number[] = Array.isArray(searchResult) ? searchResult : [];
 
-      if (uids.length === 0) throw new Error(`Thread ${threadId} not found`);
+      if (uids.length === 0) throw new Error(`Thread ${threadId} not found in "${folder}"`);
 
       const messages: Email[] = [];
       for await (const msg of client.fetch(uids, { source: true, uid: true, flags: true })) {
         if (!msg.source) continue;
         const parsed = await simpleParser(msg.source);
         (parsed as any).flags = msg.flags;
-        messages.push(mapParsedEmail(parsed, 'INBOX', this.accountId, msg.uid));
+        messages.push(mapParsedEmail(parsed, folder, this.accountId, msg.uid));
       }
 
       // Collect unique participants
@@ -539,30 +546,34 @@ export class ImapAdapter implements EmailProvider {
     }
   }
 
-  async getAttachment(emailId: string, attachmentId: string): Promise<{ data: Buffer; meta: AttachmentMeta }> {
+  async getAttachment(emailId: string, attachmentId: string, sourceFolder?: string): Promise<{ data: Buffer; meta: AttachmentMeta }> {
     const client = await this.ensureConnected();
 
+    const folder = sourceFolder ? await this.resolveFolder(sourceFolder) : 'INBOX';
     let lock;
     try {
-      lock = await client.getMailboxLock('INBOX');
+      lock = await client.getMailboxLock(folder);
     } catch (error: any) {
-      throw formatImapError(error, 'Failed to open folder "INBOX"');
+      throw formatImapError(error, `Failed to open folder "${folder}"`);
     }
     try {
       const msg = await client.fetchOne(String(emailId), { source: true, uid: true }, { uid: true });
-      if (!msg) throw new Error(`Email ${emailId} not found`);
+      if (!msg) throw new Error(`Email ${emailId} not found in "${folder}"`);
       if (!msg.source) throw new Error(`Email ${emailId} has no source`);
 
       const parsed = await simpleParser(msg.source);
-      const attachment = (parsed.attachments || []).find(
-        (att: any) => att.contentId === attachmentId || att.filename === attachmentId
-      );
-      if (!attachment) throw new Error(`Attachment ${attachmentId} not found in email ${emailId}`);
+      const attachments: any[] = parsed.attachments || [];
+      // The id the mapper listed it under first (Content-ID, or att-N for
+      // the Nth attachment when it has none), then the file name.
+      let index = attachments.findIndex((att, i) => imapAttachmentId(att, i) === attachmentId);
+      if (index === -1) index = attachments.findIndex((att) => att.filename === attachmentId);
+      if (index === -1) throw new Error(`Attachment ${attachmentId} not found in email ${emailId}`);
+      const attachment = attachments[index];
 
       return {
         data: attachment.content,
         meta: {
-          id: attachment.contentId || attachmentId,
+          id: imapAttachmentId(attachment, index),
           filename: attachment.filename || 'attachment',
           contentType: attachment.contentType || 'application/octet-stream',
           size: attachment.size || 0,
@@ -607,14 +618,14 @@ export class ImapAdapter implements EmailProvider {
    * Drafts folder, and IMAP messages are immutable once appended. This
    * deletes the old revision and appends a new one, so the returned `id`
    * is a NEW uid; the old id no longer resolves after this call.
+   *
+   * A reply draft keeps its place in the thread: when the caller passes no
+   * `inReplyTo`, the In-Reply-To and References headers of the old revision
+   * are copied into the new one.
    */
   async updateDraft(draftId: string, params: SendEmailParams, sourceFolder?: string): Promise<{ id: string }> {
     const client = await this.ensureConnected();
     const draftsFolder = sourceFolder ? await this.resolveFolder(sourceFolder) : await this.resolveFolder('Drafts');
-    // Build the new revision before touching the old one: if MIME compilation
-    // fails, the existing draft must survive instead of being deleted with no
-    // replacement.
-    const rawMessage = await this.buildDraftMessage(params);
 
     let lock;
     try {
@@ -622,7 +633,23 @@ export class ImapAdapter implements EmailProvider {
     } catch (error: any) {
       throw formatImapError(error, `Failed to open folder "${draftsFolder}"`);
     }
+    let rawMessage: Buffer;
     try {
+      let next = params;
+      if (params.inReplyTo === undefined) {
+        const old = await client.fetchOne(String(draftId), { source: true, uid: true }, { uid: true });
+        if (old && old.source) {
+          const parsed = await simpleParser(old.source);
+          const references = ([] as string[]).concat(parsed.references ?? []);
+          if (parsed.inReplyTo) {
+            next = { ...params, inReplyTo: parsed.inReplyTo, references: params.references ?? references };
+          }
+        }
+      }
+      // Build the new revision before touching the old one: if MIME compilation
+      // fails, the existing draft must survive instead of being deleted with no
+      // replacement.
+      rawMessage = await this.buildDraftMessage(next);
       await client.messageDelete(draftId, { uid: true });
     } finally {
       lock.release();

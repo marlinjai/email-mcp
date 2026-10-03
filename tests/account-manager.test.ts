@@ -142,6 +142,22 @@ describe('AccountManager', () => {
     expect(icloud?.connected).toBe(true);
   });
 
+  describe('getAccountEmail', () => {
+    it('returns the address of a stored account that is not connected yet', async () => {
+      await store.save(icloudCreds);
+      expect(await manager.getAccountEmail('icloud-1')).toBe('test@icloud.com');
+    });
+
+    it('returns the address of a connected account', async () => {
+      await manager.addAccount(gmailCreds);
+      expect(await manager.getAccountEmail('gmail-1')).toBe('test@gmail.com');
+    });
+
+    it('returns undefined for an unknown account id', async () => {
+      expect(await manager.getAccountEmail('nope')).toBeUndefined();
+    });
+  });
+
   it('adds and connects an account', async () => {
     await manager.addAccount(gmailCreds);
 

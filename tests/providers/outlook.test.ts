@@ -426,6 +426,191 @@ describe('OutlookAdapter', () => {
   });
 
   describe('sendEmail', () => {
+    it('replies in-thread through createReply, then sends the draft', async () => {
+      const createReply = createMockGraphRequest({ id: 'reply-draft-1' });
+      mockApiRequests.set('/me/messages/orig-1/createReply', createReply);
+      const patchReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-1', patchReq);
+      const sendReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-1/send', sendReq);
+      const sendMail = createMockGraphRequest();
+      mockApiRequests.set('/me/sendMail', sendMail);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.sendEmail({
+        to: [{ email: 'client@test.com' }], subject: 'Re: x', body: { text: 'Thanks' },
+        inReplyTo: '<m@x>', replyToGraphId: 'orig-1',
+      });
+
+      expect(createReply.post).toHaveBeenCalled();
+      // Exactly these fields: the caller's subject once (Graph pre-fills its
+      // own "RE: ..."), and no cc/bcc keys, so Graph's defaults stay.
+      expect(patchReq.patch).toHaveBeenCalledWith({
+        subject: 'Re: x',
+        body: { contentType: 'text', content: 'Thanks' },
+        toRecipients: [{ emailAddress: { name: undefined, address: 'client@test.com' } }],
+      });
+      expect(sendReq.post).toHaveBeenCalled();
+      expect(sendMail.post).not.toHaveBeenCalled();
+      expect(patchReq.delete).not.toHaveBeenCalled();
+      expect(result.id).toBe('reply-draft-1');
+    });
+
+    describe('reply through createReply', () => {
+      const account = {
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook' as const,
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      };
+      const reply = { to: [{ email: 'client@test.com' }], subject: 'Re: x', body: { text: 'Thanks' }, replyToGraphId: 'orig-1' };
+      const file = { filename: 'a.pdf', content: Buffer.from('pdf'), contentType: 'application/pdf' };
+
+      function setUp() {
+        const createReply = createMockGraphRequest({ id: 'reply-draft-1' });
+        mockApiRequests.set('/me/messages/orig-1/createReply', createReply);
+        // PATCH and DELETE of the draft go to the same path.
+        const draftReq = createMockGraphRequest({});
+        mockApiRequests.set('/me/messages/reply-draft-1', draftReq);
+        const attachReq = createMockGraphRequest({});
+        mockApiRequests.set('/me/messages/reply-draft-1/attachments', attachReq);
+        const sendReq = createMockGraphRequest({});
+        mockApiRequests.set('/me/messages/reply-draft-1/send', sendReq);
+        return { createReply, draftReq, attachReq, sendReq };
+      }
+
+      beforeEach(async () => {
+        await adapter.connect(account);
+      });
+
+      it('an explicit empty cc and bcc clear what Graph pre-filled', async () => {
+        const { draftReq } = setUp();
+        await adapter.sendEmail({ ...reply, cc: [], bcc: [] });
+        expect(draftReq.patch).toHaveBeenCalledWith(expect.objectContaining({ ccRecipients: [], bccRecipients: [] }));
+      });
+
+      it('given cc and bcc replace what Graph pre-filled', async () => {
+        const { draftReq } = setUp();
+        await adapter.sendEmail({ ...reply, cc: [{ email: 'carol@test.com' }], bcc: [{ name: 'Dave', email: 'dave@test.com' }] });
+        expect(draftReq.patch).toHaveBeenCalledWith(expect.objectContaining({
+          ccRecipients: [{ emailAddress: { name: undefined, address: 'carol@test.com' } }],
+          bccRecipients: [{ emailAddress: { name: 'Dave', address: 'dave@test.com' } }],
+        }));
+      });
+
+      it('an empty to keeps the recipient Graph pre-filled', async () => {
+        const { draftReq, sendReq } = setUp();
+        await adapter.sendEmail({ ...reply, to: [] });
+        expect((draftReq.patch as any).mock.calls[0][0]).not.toHaveProperty('toRecipients');
+        expect(sendReq.post).toHaveBeenCalled();
+      });
+
+      it('uploads each attachment to the draft before sending', async () => {
+        const { attachReq, sendReq } = setUp();
+        await adapter.sendEmail({ ...reply, attachments: [file, { ...file, filename: 'b.pdf' }] });
+        expect((attachReq.post as any).mock.calls.map((c: any[]) => c[0].name)).toEqual(['a.pdf', 'b.pdf']);
+        expect((attachReq.post as any).mock.invocationCallOrder[1]).toBeLessThan((sendReq.post as any).mock.invocationCallOrder[0]);
+      });
+
+      it('accepts files that are each under 3 MB even when they total more', async () => {
+        const { attachReq, sendReq } = setUp();
+        const twoMb = { ...file, content: Buffer.alloc(2 * 1024 * 1024) };
+        await adapter.sendEmail({ ...reply, attachments: [twoMb, { ...twoMb, filename: 'b.pdf' }] });
+        expect(attachReq.post).toHaveBeenCalledTimes(2);
+        expect(sendReq.post).toHaveBeenCalled();
+      });
+
+      it('refuses a file over 3 MB before any reply draft is created, on send and on draft create', async () => {
+        const { createReply } = setUp();
+        const big = { ...reply, attachments: [{ ...file, filename: 'big.zip', content: Buffer.alloc(3 * 1024 * 1024 + 1) }] };
+        await expect(adapter.sendEmail(big)).rejects.toThrow(/Outlook accepts attachments up to 3\.0 MB.*big\.zip/);
+        await expect(adapter.createDraft(big)).rejects.toThrow(/Outlook accepts attachments up to 3\.0 MB.*big\.zip/);
+        expect(createReply.post).not.toHaveBeenCalled();
+      });
+
+      it('creates nothing to clean up when createReply itself fails', async () => {
+        const { createReply, draftReq } = setUp();
+        createReply.post = vi.fn().mockRejectedValue(new Error('original not found'));
+        await expect(adapter.sendEmail(reply)).rejects.toThrow('original not found');
+        expect(draftReq.delete).not.toHaveBeenCalled();
+      });
+
+      it('deletes the draft and rethrows when the PATCH fails', async () => {
+        const { draftReq, sendReq } = setUp();
+        const failure = new Error('patch failed');
+        draftReq.patch = vi.fn().mockRejectedValue(failure);
+        await expect(adapter.sendEmail(reply)).rejects.toBe(failure);
+        expect(draftReq.delete).toHaveBeenCalledTimes(1);
+        expect(sendReq.post).not.toHaveBeenCalled();
+      });
+
+      it('deletes the draft and rethrows when an attachment upload fails', async () => {
+        const { draftReq, attachReq, sendReq } = setUp();
+        const failure = new Error('upload failed');
+        attachReq.post = vi.fn().mockRejectedValue(failure);
+        await expect(adapter.sendEmail({ ...reply, attachments: [file] })).rejects.toBe(failure);
+        expect(draftReq.delete).toHaveBeenCalledTimes(1);
+        expect(sendReq.post).not.toHaveBeenCalled();
+      });
+
+      it('keeps the draft when the send fails, and says where it is: the mail may be on its way', async () => {
+        const { draftReq, sendReq } = setUp();
+        const failure = new Error('gateway timeout');
+        sendReq.post = vi.fn().mockRejectedValue(failure);
+        const error: any = await adapter.sendEmail(reply).catch((e) => e);
+        expect(error).toBeInstanceOf(Error);
+        expect(error.message).toBe(
+          'gateway timeout (the reply was saved as draft reply-draft-1 in Drafts and was not confirmed as sent; check Sent Items before sending it again)',
+        );
+        expect(error.cause).toBe(failure);
+        expect(draftReq.patch).toHaveBeenCalledTimes(1);
+        expect(draftReq.delete).not.toHaveBeenCalled();
+      });
+
+      it('keeps the draft with its attachments when the send fails after the uploads', async () => {
+        const { draftReq, attachReq, sendReq } = setUp();
+        sendReq.post = vi.fn().mockRejectedValue(new Error('503'));
+        await expect(adapter.sendEmail({ ...reply, attachments: [file] })).rejects.toThrow(/saved as draft reply-draft-1 in Drafts/);
+        expect(attachReq.post).toHaveBeenCalledTimes(1);
+        expect(draftReq.delete).not.toHaveBeenCalled();
+      });
+
+      it('says that the draft was left in Drafts when a fill fails and deleting it fails too', async () => {
+        const { draftReq } = setUp();
+        const failure = new Error('patch failed');
+        draftReq.patch = vi.fn().mockRejectedValue(failure);
+        draftReq.delete = vi.fn().mockRejectedValue(new Error('delete failed'));
+        const error: any = await adapter.sendEmail(reply).catch((e) => e);
+        expect(error.message).toMatch(/^patch failed \(the reply draft reply-draft-1 could not be removed and was left in Drafts: delete failed\)$/);
+        expect(error.cause).toBe(failure);
+      });
+
+      it('createDraft deletes the half-built reply draft when filling it fails', async () => {
+        const { draftReq, attachReq, sendReq } = setUp();
+        const failure = new Error('upload failed');
+        attachReq.post = vi.fn().mockRejectedValue(failure);
+        await expect(adapter.createDraft({ ...reply, attachments: [file] })).rejects.toBe(failure);
+        expect(draftReq.delete).toHaveBeenCalledTimes(1);
+        expect(sendReq.post).not.toHaveBeenCalled();
+      });
+
+      it('createDraft keeps the finished reply draft', async () => {
+        const { draftReq, sendReq } = setUp();
+        expect(await adapter.createDraft(reply)).toEqual({ id: 'reply-draft-1' });
+        expect(draftReq.patch).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Re: x' }));
+        expect(draftReq.delete).not.toHaveBeenCalled();
+        expect(sendReq.post).not.toHaveBeenCalled();
+      });
+    });
+
     it('calls POST /me/sendMail with correct payload', async () => {
       const mockSendRequest = createMockGraphRequest();
       mockApiRequests.set('/me/sendMail', mockSendRequest);
@@ -516,6 +701,30 @@ describe('OutlookAdapter', () => {
   });
 
   describe('createDraft', () => {
+    it('creates a threaded reply draft through createReply and does not send it', async () => {
+      const createReply = createMockGraphRequest({ id: 'reply-draft-2' });
+      mockApiRequests.set('/me/messages/orig-2/createReply', createReply);
+      mockApiRequests.set('/me/messages/reply-draft-2', createMockGraphRequest({}));
+      const sendReq = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-2/send', sendReq);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.createDraft({
+        to: [{ email: 'client@test.com' }], subject: 'Re: x', body: { text: 'Draft' }, replyToGraphId: 'orig-2',
+      });
+
+      expect(createReply.post).toHaveBeenCalled();
+      expect(sendReq.post).not.toHaveBeenCalled();
+      expect(result.id).toBe('reply-draft-2');
+    });
+
     it('calls POST /me/messages to create a draft', async () => {
       const mockDraftRequest = createMockGraphRequest({ id: 'draft-123' });
       mockApiRequests.set('/me/messages', mockDraftRequest);
@@ -632,6 +841,38 @@ describe('OutlookAdapter', () => {
           toRecipients: [{ emailAddress: { name: undefined, address: 'bob@test.com' } }],
         }),
       );
+    });
+
+    it('needs no thread data: one PATCH of the message fields keeps a reply draft in its conversation', async () => {
+      const patchRequest = createMockGraphRequest({});
+      mockApiRequests.set('/me/messages/reply-draft-1', patchRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const result = await adapter.updateDraft('reply-draft-1', {
+        to: [{ email: 'client@test.com' }],
+        subject: 'Re: x',
+        body: { text: 'Second version' },
+      });
+
+      expect(result.id).toBe('reply-draft-1');
+      expect(patchRequest.patch).toHaveBeenCalledTimes(1);
+      expect(patchRequest.patch).toHaveBeenCalledWith({
+        subject: 'Re: x',
+        body: { contentType: 'text', content: 'Second version' },
+        toRecipients: [{ emailAddress: { name: undefined, address: 'client@test.com' } }],
+      });
+      // No other request: nothing is read back, recreated or deleted.
+      expect(patchRequest.get).not.toHaveBeenCalled();
+      expect(patchRequest.delete).not.toHaveBeenCalled();
+      expect(defaultMockRequest.get).not.toHaveBeenCalled();
+      expect(defaultMockRequest.post).not.toHaveBeenCalled();
     });
 
     it('replaces existing attachments when new ones are given', async () => {

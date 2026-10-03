@@ -206,7 +206,7 @@ export class GmailAdapter implements EmailProvider {
 
     const res = await gmail.users.messages.send({
       userId: 'me',
-      requestBody: { raw },
+      requestBody: { raw, ...this.threadFor(params) },
     });
 
     return {
@@ -222,22 +222,45 @@ export class GmailAdapter implements EmailProvider {
     const res = await gmail.users.drafts.create({
       userId: 'me',
       requestBody: {
-        message: { raw },
+        message: { raw, ...this.threadFor(params) },
       },
     });
 
     return { id: res.data.id || '' };
   }
 
-  async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
+  /**
+   * drafts.update replaces the whole message, so a reply draft would fall out
+   * of its thread. When the caller names no thread, the thread and the reply
+   * headers of the stored draft are carried over into the new message.
+   */
+  async updateDraft(draftId: string, update: SendEmailParams): Promise<{ id: string }> {
     const gmail = this.ensureConnected();
+    let params = update;
+    if (update.threadId === undefined) {
+      const existing = await gmail.users.drafts.get({
+        userId: 'me',
+        id: draftId,
+        // Ids, labels and headers, no body. drafts.get has no way to ask for
+        // single headers (messages.get does), so all of them come back.
+        format: 'metadata',
+      });
+      const message = existing.data.message;
+      const header = (name: string): string | undefined =>
+        (message?.payload?.headers || []).find((h) => (h.name || '').toLowerCase() === name)?.value || undefined;
+      const inReplyTo = update.inReplyTo ?? header('in-reply-to');
+      const references = update.references ?? header('references')?.split(/\s+/).filter(Boolean);
+      if (message?.threadId && inReplyTo) {
+        params = { ...update, threadId: message.threadId, inReplyTo, references: references?.length ? references : [inReplyTo] };
+      }
+    }
     const raw = await this.buildRaw(params);
 
     const res = await gmail.users.drafts.update({
       userId: 'me',
       id: draftId,
       requestBody: {
-        message: { raw },
+        message: { raw, ...this.threadFor(params) },
       },
     });
 
@@ -708,6 +731,17 @@ export class GmailAdapter implements EmailProvider {
       throw new Error(`No forwarding rule with id ${ruleId} on this account. Use email_list_forward_rules to see the ids.`);
     }
     await this.deleteBlockRule(ruleId);
+  }
+
+  /**
+   * Gmail files a message into an existing thread only when the threadId
+   * comes with In-Reply-To and References headers and a subject (which has to
+   * match the thread's; the reply tool builds "Re: <original subject>"). A
+   * threadId without them is left out, and the message starts its own thread.
+   */
+  private threadFor(params: SendEmailParams): { threadId?: string } {
+    const belongs = params.threadId && params.inReplyTo && params.references?.length && params.subject.trim();
+    return belongs ? { threadId: params.threadId } : {};
   }
 
   /**
