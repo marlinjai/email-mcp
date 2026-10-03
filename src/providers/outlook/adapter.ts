@@ -25,30 +25,38 @@ const toGraphAttachment = (att: { filename: string; contentType: string; content
 });
 
 // Graph takes a file attachment inline only below 3 MB, and a whole request
-// only below 4 MB; anything larger needs an upload session, which this
-// adapter does not implement. Refusing here gives a clear message instead of
-// Graph's 413 after the upload.
+// body only below 4 MB (base64 and JSON overhead included); anything larger
+// needs an upload session, which this adapter does not implement. Refusing
+// here gives a clear message instead of Graph's 413 after the upload.
 export const OUTLOOK_MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+export const OUTLOOK_MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 
 type OutgoingAttachments = NonNullable<SendEmailParams['attachments']>;
+
+const UPLOAD_SESSION_HINT = 'Larger files need an upload session, which email-mcp does not implement for Outlook yet.';
 
 function megabytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** `inOneRequest`: the attachments travel inside a single Graph request (send, draft create). */
-function assertOutlookAttachmentSizes(attachments: OutgoingAttachments | undefined, inOneRequest: boolean): void {
+/** Each file on its own must fit Graph's inline attachment limit. */
+function assertOutlookAttachmentSizes(attachments: OutgoingAttachments | undefined): void {
   if (!attachments?.length) return;
   const limit = megabytes(OUTLOOK_MAX_ATTACHMENT_BYTES);
-  const hint = 'Larger files need an upload session, which email-mcp does not implement for Outlook yet.';
   for (const att of attachments) {
     if (att.content.length > OUTLOOK_MAX_ATTACHMENT_BYTES) {
-      throw new Error(`Outlook accepts attachments up to ${limit} through email-mcp; ${att.filename} is ${megabytes(att.content.length)}. ${hint}`);
+      throw new Error(`Outlook accepts attachments up to ${limit} through email-mcp; ${att.filename} is ${megabytes(att.content.length)}. ${UPLOAD_SESSION_HINT}`);
     }
   }
-  const total = attachments.reduce((sum, att) => sum + att.content.length, 0);
-  if (inOneRequest && total > OUTLOOK_MAX_ATTACHMENT_BYTES) {
-    throw new Error(`Outlook accepts up to ${limit} of attachments per message through email-mcp; these total ${megabytes(total)}. ${hint}`);
+}
+
+/** The whole serialized request (attachments base64-encoded, JSON overhead included) must fit Graph's write limit. */
+function assertOutlookRequestSize(body: unknown): void {
+  const bytes = Buffer.byteLength(JSON.stringify(body));
+  if (bytes > OUTLOOK_MAX_REQUEST_BYTES) {
+    throw new Error(
+      `Outlook accepts requests up to ${megabytes(OUTLOOK_MAX_REQUEST_BYTES)} through email-mcp; this message is ${megabytes(bytes)} once its attachments are base64-encoded. ${UPLOAD_SESSION_HINT}`,
+    );
   }
 }
 
@@ -246,13 +254,14 @@ export class OutlookAdapter implements EmailProvider {
 
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     const client = this.ensureClient();
-    assertOutlookAttachmentSizes(params.attachments, true);
+    assertOutlookAttachmentSizes(params.attachments);
     const message = this.buildGraphMessage(params);
 
     const payload: any = { message };
     if (params.attachments?.length) {
       payload.message.attachments = params.attachments.map(toGraphAttachment);
     }
+    assertOutlookRequestSize(payload);
 
     await client.api('/me/sendMail').post(payload);
 
@@ -261,11 +270,12 @@ export class OutlookAdapter implements EmailProvider {
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
-    assertOutlookAttachmentSizes(params.attachments, true);
+    assertOutlookAttachmentSizes(params.attachments);
     const message = this.buildGraphMessage(params);
     if (params.attachments?.length) {
       message.attachments = params.attachments.map(toGraphAttachment);
     }
+    assertOutlookRequestSize(message);
 
     const result = await client.api('/me/messages').post(message);
     return { id: result.id };
@@ -273,7 +283,7 @@ export class OutlookAdapter implements EmailProvider {
 
   async updateDraft(draftId: string, params: SendEmailParams): Promise<{ id: string }> {
     const client = this.ensureClient();
-    assertOutlookAttachmentSizes(params.attachments, false);
+    assertOutlookAttachmentSizes(params.attachments);
     const message = this.buildGraphMessage(params);
 
     await client.api(`/me/messages/${encodeURIComponent(draftId)}`).patch(message);
@@ -286,7 +296,7 @@ export class OutlookAdapter implements EmailProvider {
       // Every page of the files that are there now, before anything changes.
       const previousIds: string[] = [];
       let page = await client.api(attachmentsPath).select('id').get();
-      for (let i = 0; i < 100; i += 1) {
+      for (;;) {
         previousIds.push(...(page.value || []).map((att: any) => att.id));
         const next = page['@odata.nextLink'];
         if (!next) break;
