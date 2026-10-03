@@ -141,12 +141,30 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 
 ### Sending & Drafts (6)
 
+`email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an optional `attachments` list. Each entry is either `{ path }` (a file in the attachments folder, see below) or `{ content, filename }` (base64), with an optional `contentType` (inferred from the extension otherwise). The total is capped at 25 MB; Outlook accepts up to 3 MB per message through this server. On `email_draft_update` a list replaces the draft's files and an empty list removes them.
+
+**Attaching files by path is off until you name a folder.** The path comes from the assistant, and an assistant that reads mail can be asked by a mail to attach something it should not (a private key, for example). So files are only read from the one folder you set in `EMAIL_MCP_ATTACHMENTS_DIR`, in the environment of the server; no tool can change it. Put the file there and ask for it by name:
+
+```json
+{
+  "mcpServers": {
+    "email": {
+      "command": "npx",
+      "args": ["@marlinjai/email-mcp"],
+      "env": { "EMAIL_MCP_ATTACHMENTS_DIR": "~/Documents/email-outbox" }
+    }
+  }
+}
+```
+
+A path outside that folder is refused, as is a symbolic link that leads out of it, and email-mcp's own data files are never attachable.
+
 | Tool | Description |
 |------|-------------|
-| `email_send` | Compose and send a new email (to, cc, bcc, subject, body) |
+| `email_send` | Compose and send a new email (to, cc, bcc, subject, body, attachments) |
 | `email_reply` | Reply to an email (supports reply-all, preserves threading) |
 | `email_forward` | Forward an email to new recipients |
-| `email_draft_create` | Save a draft without sending |
+| `email_draft_create` | Save a draft without sending (attachments supported) |
 | `email_draft_update` | Update an existing draft in place. On Gmail/Outlook the draft id is unchanged; on iCloud/generic IMAP there's no in-place update (IMAP messages are immutable), so the old draft is deleted and a new one appended — the returned id is a **new** id, always use it going forward |
 | `email_draft_list` | List all drafts |
 

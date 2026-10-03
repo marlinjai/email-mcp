@@ -540,6 +540,24 @@ describe('GmailAdapter', () => {
       expect(result.id).toBe('draft-1');
       expect(mockDraftsCreate).toHaveBeenCalled();
     });
+
+    it('includes attachments and an HTML part in the raw message', async () => {
+      await adapter.createDraft({
+        to: [{ email: 'bob@example.com' }],
+        subject: 'Invoice',
+        body: { text: 'See attached', html: '<p>See <b>attached</b></p>' },
+        attachments: [
+          { filename: 'invoice.pdf', content: Buffer.from('%PDF-1.4 test'), contentType: 'application/pdf' },
+        ],
+      });
+
+      const raw = mockDraftsCreate.mock.calls.at(-1)![0].requestBody.message.raw;
+      const mime = Buffer.from(raw, 'base64url').toString();
+      expect(mime).toContain('multipart/mixed');
+      expect(mime).toContain('Content-Type: text/html');
+      expect(mime).toContain('filename=invoice.pdf');
+      expect(mime).toContain(Buffer.from('%PDF-1.4 test').toString('base64'));
+    });
   });
 
   describe('updateDraft', () => {

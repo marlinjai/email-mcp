@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Attachments on outgoing mail.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` take an `attachments` list: `{ path }` or `{ content, filename }` (base64), with an optional `contentType`. The total is capped at 25 MB and checked before any file is read. Contributed by @jonboy648 (#20).
+- **`EMAIL_MCP_ATTACHMENTS_DIR`: the one folder files may be attached from.** Attaching by path is off until this is set in the server's environment. A path outside the folder, a symbolic link leading out of it and email-mcp's own data files are refused, so a mail that asks the assistant to attach a private key cannot get its way. Content passed directly as base64 works without it.
+- **Outlook drafts carry attachments.** `email_draft_create` attaches them, and `email_draft_update` replaces the draft's files when a list is given (new files are uploaded before the old ones are removed, an empty list removes them all, no list leaves them alone).
+
+### Changed
+- **Outlook refuses attachments over 3 MB with a clear message** (per file, and per message on send and draft create) instead of failing at Microsoft after the upload. Larger files need an upload session, which is not implemented.
+
 ## [1.9.0] - 2026-10-02
 
 Forwarding rules. A minor release: three new tools, and one existing tool lists less than before (see "Changed").
