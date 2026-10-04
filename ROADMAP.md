@@ -33,8 +33,8 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       only from that one folder, because a path chosen by the assistant could otherwise mail out
       any local file. Open: a live test per provider (Gmail, Outlook, iCloud or IMAP: send and
       draft with a PDF), (the setting itself is in place, see the end of this line). Since 2026-10-04 a draft
-      update keeps the draft's files on Gmail, iCloud and IMAP too when none are passed (not
-      yet released; the live test also covers updating a draft that has a file). Outlook is
+      update keeps the draft's files on Gmail, iCloud and IMAP too when none are passed (released
+      as 1.10.1; the live test also covers updating a draft that has a file). Outlook is
       limited to 3 MB per message
       with a clear error; upload sessions for larger files are not built, by decision of
       2026-10-03. Built on top (pull request #21 by @jonboy648): threaded replies, reply drafts

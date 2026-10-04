@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-10-04
+
+Drafts keep their attachments. A patch release: one fix, no tool or input changed.
+
 ### Fixed
 - **Updating a draft no longer drops its attachments on Gmail, iCloud and IMAP.** `email_draft_update` rebuilds the message on those providers, so a draft lost its files whenever they were not passed again. When no `attachments` are given, the stored draft's files are now carried over into the new version, as Outlook already did. A list still replaces them and an empty list removes them. Images embedded in the old body are not carried over, since the body is replaced. If one of the stored files cannot be read, the update fails and the draft is left unchanged.
 
@@ -288,6 +292,7 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.10.1]: https://github.com/marlinjai/email-mcp/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/marlinjai/email-mcp/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/marlinjai/email-mcp/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/marlinjai/email-mcp/compare/v1.8.0...v1.8.1
