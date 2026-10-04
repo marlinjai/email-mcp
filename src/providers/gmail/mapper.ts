@@ -59,7 +59,7 @@ function decodeBase64Url(data: string): string {
   return Buffer.from(data, 'base64url').toString('utf-8');
 }
 
-function extractBody(
+export function extractBody(
   payload: any,
 ): { text?: string; html?: string } {
   const result: { text?: string; html?: string } = {};

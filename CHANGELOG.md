@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Updating a draft no longer drops its attachments on Gmail, iCloud and IMAP.** `email_draft_update` rebuilds the message on those providers, so a draft lost its files whenever they were not passed again. When no `attachments` are given, the stored draft's files are now carried over into the new version, as Outlook already did. A list still replaces them and an empty list removes them. Images embedded in the old body are not carried over, since the body is replaced. If one of the stored files cannot be read, the update fails and the draft is left unchanged.
+
 ## [1.10.0] - 2026-10-03
 
 Attachments and replies that stay in their thread. A minor release: new inputs on existing tools and one new setting, no tool renamed or removed. Two things behave differently after upgrading, both under "Changed": the `headers` of a message on iCloud and IMAP, and reply-all recipients.

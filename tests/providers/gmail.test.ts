@@ -664,13 +664,23 @@ describe('GmailAdapter', () => {
 
       await adapter.updateDraft('draft-1', update);
 
-      expect(mockDraftsGet).toHaveBeenCalledWith({ userId: 'me', id: 'draft-1', format: 'metadata' });
+      // The files are not named either, so the whole stored draft is read.
+      expect(mockDraftsGet).toHaveBeenCalledWith({ userId: 'me', id: 'draft-1', format: 'full' });
       const message = mockDraftsUpdate.mock.calls[0][0].requestBody.message;
       expect(message.threadId).toBe('thread-456');
       const parsed = await simpleParser(Buffer.from(message.raw, 'base64url'));
       expect(parsed.inReplyTo).toBe('<msg-123@example.com>');
       expect(parsed.references).toEqual(['<root@example.com>', '<msg-123@example.com>']);
       expect(parsed.text?.trim()).toBe('Second version');
+    });
+
+    it('reads only the headers of the stored draft when the caller names the files', async () => {
+      mockDraftsGet.mockResolvedValueOnce(storedReplyDraft([{ name: 'In-Reply-To', value: '<msg-123@example.com>' }]));
+
+      await adapter.updateDraft('draft-1', { ...update, attachments: [] });
+
+      expect(mockDraftsGet).toHaveBeenCalledWith({ userId: 'me', id: 'draft-1', format: 'metadata' });
+      expect(mockAttachmentsGet).not.toHaveBeenCalled();
     });
 
     it('carries over a reply draft that has In-Reply-To but no References', async () => {
@@ -700,13 +710,148 @@ describe('GmailAdapter', () => {
       expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message).toEqual({ raw: expect.any(String) });
     });
 
-    it('does not read the stored draft when the caller names the thread', async () => {
+    it('does not read the stored draft when the caller names both the thread and the files', async () => {
       await adapter.updateDraft('draft-1', {
-        ...update, threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'],
+        ...update, threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'], attachments: [],
       });
 
       expect(mockDraftsGet).not.toHaveBeenCalled();
       expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message.threadId).toBe('thread-9');
+    });
+
+    describe('keeps the draft\'s files', () => {
+      const pdf = Buffer.from('%PDF-1.4 invoice');
+      const note = Buffer.from('small note');
+      const storedDraftWithFiles = {
+        data: {
+          id: 'draft-1',
+          message: {
+            id: 'msg-draft-1',
+            threadId: 'thread-own',
+            payload: {
+              mimeType: 'multipart/mixed',
+              headers: [{ name: 'Subject', value: 'Invoice' }],
+              parts: [
+                {
+                  mimeType: 'multipart/related',
+                  parts: [
+                    { mimeType: 'text/html', body: { data: Buffer.from('<p>Old <img src="cid:logo@local"></p>').toString('base64url') } },
+                    {
+                      mimeType: 'image/png',
+                      filename: 'logo.png',
+                      headers: [
+                        { name: 'Content-Disposition', value: 'inline; filename="logo.png"' },
+                        { name: 'Content-ID', value: '<logo@local>' },
+                      ],
+                      body: { attachmentId: 'att-logo' },
+                    },
+                  ],
+                },
+                {
+                  mimeType: 'image/png',
+                  filename: 'scan.png',
+                  headers: [
+                    { name: 'Content-Disposition', value: 'inline; filename="scan.png"' },
+                    { name: 'Content-ID', value: '<scan@local>' },
+                  ],
+                  body: { data: Buffer.from('scan').toString('base64url') },
+                },
+                { mimeType: 'application/pdf', filename: 'Invoice 59.pdf', body: { attachmentId: 'att-pdf', size: pdf.length } },
+                { mimeType: 'text/plain', filename: 'note.txt', body: { data: note.toString('base64url') } },
+              ],
+            },
+          },
+        },
+      };
+
+      const attachmentsOf = async () => {
+        const raw = mockDraftsUpdate.mock.calls[0][0].requestBody.message.raw;
+        const parsed = await simpleParser(Buffer.from(raw, 'base64url'));
+        return parsed.attachments.map((a) => ({ filename: a.filename, type: a.contentType, text: a.content.toString() }));
+      };
+
+      it('carries the stored files over when the update names none', async () => {
+        mockDraftsGet.mockResolvedValueOnce(storedDraftWithFiles);
+        mockAttachmentsGet.mockResolvedValueOnce({ data: { data: pdf.toString('base64url'), size: pdf.length } });
+
+        await adapter.updateDraft('draft-1', update);
+
+        // The large file is fetched by its id from the draft's message; the
+        // small one came inline; the image the old body embeds is left out, an
+        // inline part it does not reference is a file and stays.
+        expect(mockAttachmentsGet).toHaveBeenCalledTimes(1);
+        expect(mockAttachmentsGet).toHaveBeenCalledWith({ userId: 'me', messageId: 'msg-draft-1', id: 'att-pdf' });
+        expect(await attachmentsOf()).toEqual([
+          { filename: 'scan.png', type: 'image/png', text: 'scan' },
+          { filename: 'Invoice 59.pdf', type: 'application/pdf', text: '%PDF-1.4 invoice' },
+          { filename: 'note.txt', type: 'text/plain', text: 'small note' },
+        ]);
+      });
+
+      it('replaces the stored files when the update names its own', async () => {
+        await adapter.updateDraft('draft-1', {
+          ...update,
+          threadId: 'thread-9', inReplyTo: '<orig@example.com>', references: ['<orig@example.com>'],
+          attachments: [{ filename: 'new.txt', content: Buffer.from('new'), contentType: 'text/plain' }],
+        });
+
+        expect(mockAttachmentsGet).not.toHaveBeenCalled();
+        expect(await attachmentsOf()).toEqual([{ filename: 'new.txt', type: 'text/plain', text: 'new' }]);
+      });
+
+      it('removes the stored files when the update gives an empty list', async () => {
+        mockDraftsGet.mockResolvedValueOnce(storedDraftWithFiles);
+
+        await adapter.updateDraft('draft-1', { ...update, attachments: [] });
+
+        expect(mockAttachmentsGet).not.toHaveBeenCalled();
+        expect(await attachmentsOf()).toEqual([]);
+      });
+
+      it('keeps the files and the thread of a reply draft together', async () => {
+        mockDraftsGet.mockResolvedValueOnce({
+          data: {
+            ...storedDraftWithFiles.data,
+            message: {
+              ...storedDraftWithFiles.data.message,
+              threadId: 'thread-456',
+              payload: {
+                ...storedDraftWithFiles.data.message.payload,
+                headers: [{ name: 'In-Reply-To', value: '<msg-123@example.com>' }],
+              },
+            },
+          },
+        });
+        mockAttachmentsGet.mockResolvedValueOnce({ data: { data: pdf.toString('base64url'), size: pdf.length } });
+
+        await adapter.updateDraft('draft-1', update);
+
+        expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message.threadId).toBe('thread-456');
+        expect((await attachmentsOf()).map((a) => a.filename)).toEqual(['scan.png', 'Invoice 59.pdf', 'note.txt']);
+      });
+
+      it('does not change the draft when one of its files cannot be fetched', async () => {
+        mockDraftsGet.mockResolvedValueOnce(storedDraftWithFiles);
+        mockAttachmentsGet.mockRejectedValueOnce(new Error('backend error'));
+
+        await expect(adapter.updateDraft('draft-1', update)).rejects.toThrow('backend error');
+        expect(mockDraftsUpdate).not.toHaveBeenCalled();
+      });
+
+      it('does not change the draft when a file comes back without content', async () => {
+        mockDraftsGet.mockResolvedValueOnce(storedDraftWithFiles);
+        mockAttachmentsGet.mockResolvedValueOnce({ data: {} });
+
+        await expect(adapter.updateDraft('draft-1', update)).rejects.toThrow(/Could not read the draft's attachment Invoice 59\.pdf/);
+        expect(mockDraftsUpdate).not.toHaveBeenCalled();
+      });
+
+      it('leaves a draft without files as it is', async () => {
+        await adapter.updateDraft('draft-1', update);
+
+        expect(mockAttachmentsGet).not.toHaveBeenCalled();
+        expect(await attachmentsOf()).toEqual([]);
+      });
     });
 
     it('fails without changing the draft when the stored draft cannot be read', async () => {
