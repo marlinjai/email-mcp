@@ -651,8 +651,17 @@ export class ImapAdapter implements EmailProvider {
             next = { ...next, inReplyTo: parsed.inReplyTo, references: params.references ?? references };
           }
           if (keepFiles) {
+            // A related part the old HTML references is an embedded image
+            // that the new body replaces; one it does not reference is a file.
+            const html = (parsed.html || '').toLowerCase();
             const files = (parsed.attachments || [])
-              .filter((att: any) => !att.related)
+              .filter((att: any) => {
+                if (!att.related) return true;
+                const cid = String(att.cid || att.contentId || '')
+                  .replace(/^<|>$/g, '')
+                  .toLowerCase();
+                return !cid || !html.includes(`cid:${cid}`);
+              })
               .map((att: any, i: number) => ({
                 filename: att.filename || `attachment-${i + 1}`,
                 content: att.content as Buffer,

@@ -735,7 +735,7 @@ describe('GmailAdapter', () => {
                 {
                   mimeType: 'multipart/related',
                   parts: [
-                    { mimeType: 'text/html', body: { data: Buffer.from('<p>Old</p>').toString('base64url') } },
+                    { mimeType: 'text/html', body: { data: Buffer.from('<p>Old <img src="cid:logo@local"></p>').toString('base64url') } },
                     {
                       mimeType: 'image/png',
                       filename: 'logo.png',
@@ -746,6 +746,15 @@ describe('GmailAdapter', () => {
                       body: { attachmentId: 'att-logo' },
                     },
                   ],
+                },
+                {
+                  mimeType: 'image/png',
+                  filename: 'scan.png',
+                  headers: [
+                    { name: 'Content-Disposition', value: 'inline; filename="scan.png"' },
+                    { name: 'Content-ID', value: '<scan@local>' },
+                  ],
+                  body: { data: Buffer.from('scan').toString('base64url') },
                 },
                 { mimeType: 'application/pdf', filename: 'Invoice 59.pdf', body: { attachmentId: 'att-pdf', size: pdf.length } },
                 { mimeType: 'text/plain', filename: 'note.txt', body: { data: note.toString('base64url') } },
@@ -768,10 +777,12 @@ describe('GmailAdapter', () => {
         await adapter.updateDraft('draft-1', update);
 
         // The large file is fetched by its id from the draft's message; the
-        // small one came inline; the image embedded in the old body is left out.
+        // small one came inline; the image the old body embeds is left out, an
+        // inline part it does not reference is a file and stays.
         expect(mockAttachmentsGet).toHaveBeenCalledTimes(1);
         expect(mockAttachmentsGet).toHaveBeenCalledWith({ userId: 'me', messageId: 'msg-draft-1', id: 'att-pdf' });
         expect(await attachmentsOf()).toEqual([
+          { filename: 'scan.png', type: 'image/png', text: 'scan' },
           { filename: 'Invoice 59.pdf', type: 'application/pdf', text: '%PDF-1.4 invoice' },
           { filename: 'note.txt', type: 'text/plain', text: 'small note' },
         ]);
@@ -816,7 +827,7 @@ describe('GmailAdapter', () => {
         await adapter.updateDraft('draft-1', update);
 
         expect(mockDraftsUpdate.mock.calls[0][0].requestBody.message.threadId).toBe('thread-456');
-        expect((await attachmentsOf()).map((a) => a.filename)).toEqual(['Invoice 59.pdf', 'note.txt']);
+        expect((await attachmentsOf()).map((a) => a.filename)).toEqual(['scan.png', 'Invoice 59.pdf', 'note.txt']);
       });
 
       it('does not change the draft when one of its files cannot be fetched', async () => {

@@ -18,7 +18,7 @@ import type {
   ForwardRule,
 } from '../../models/types.js';
 import { ProviderType } from '../../models/types.js';
-import { mapGmailLabel, mapGmailMessage, buildGmailQuery } from './mapper.js';
+import { mapGmailLabel, mapGmailMessage, buildGmailQuery, extractBody } from './mapper.js';
 import { buildMimeMessage } from '../mime.js';
 
 export class GmailAdapter implements EmailProvider {
@@ -768,13 +768,18 @@ export class GmailAdapter implements EmailProvider {
   ): Promise<NonNullable<SendEmailParams['attachments']>> {
     const gmail = this.ensureConnected();
     const files: NonNullable<SendEmailParams['attachments']> = [];
+    const html = (extractBody(payload).html || '').toLowerCase();
     const visit = async (part: gmail_v1.Schema$MessagePart | undefined): Promise<void> => {
       if (!part) return;
-      // An image embedded in the HTML body (inline, addressed by Content-ID)
-      // belongs to the old body, which the update replaces. It is not a file.
+      // An image the HTML body embeds (inline, addressed by Content-ID and
+      // referenced as cid: in the old HTML) belongs to the old body, which the
+      // update replaces. It is not a file. An inline part the HTML does not
+      // reference is a file another client attached, so it is kept.
       const partHeader = (name: string) =>
         (part.headers || []).find((h) => (h.name || '').toLowerCase() === name)?.value || '';
-      const embedded = /^\s*inline/i.test(partHeader('content-disposition')) && partHeader('content-id') !== '';
+      const contentId = partHeader('content-id').trim().replace(/^<|>$/g, '').toLowerCase();
+      const embedded =
+        /^\s*inline/i.test(partHeader('content-disposition')) && contentId !== '' && html.includes(`cid:${contentId}`);
       if (part.filename && !embedded) {
         let data = part.body?.data;
         if (!data && part.body?.attachmentId) {

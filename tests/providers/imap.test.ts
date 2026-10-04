@@ -985,11 +985,16 @@ describe('ImapAdapter threads, drafts, attachments', () => {
         { filename: 'logo.png', contentType: 'image/png', content: Buffer.from('png'), related: true, cid: 'logo@x' },
         { contentType: 'text/plain', content: Buffer.from('no name') },
       ];
+      // The old body embeds logo.png and does not reference the file below.
+      const oldHtml = '<p>Hi <img src="cid:logo@x"></p>';
+      const unreferenced = {
+        filename: 'scan.png', contentType: 'image/png', content: Buffer.from('scan'), related: true, cid: 'scan@x',
+      };
       const attachmentsOf = async () =>
         (await appended()).attachments.map((a) => ({ filename: a.filename, type: a.contentType, text: a.content.toString() }));
 
       it('carries the old revision\'s files over when the update names none, without images embedded in the old body', async () => {
-        await storedDraft({ attachments: files });
+        await storedDraft({ attachments: files, html: oldHtml });
 
         await adapter.updateDraft('99', update);
 
@@ -999,8 +1004,16 @@ describe('ImapAdapter threads, drafts, attachments', () => {
         ]);
       });
 
+      it('keeps a related part the old HTML does not reference', async () => {
+        await storedDraft({ attachments: [...files, unreferenced], html: oldHtml });
+
+        await adapter.updateDraft('99', update);
+
+        expect((await appended()).attachments.map((a) => a.filename)).toEqual(['Invoice 59.pdf', 'attachment-2', 'scan.png']);
+      });
+
       it('keeps the files and the reply headers together', async () => {
-        await storedDraft({ inReplyTo: '<orig@test.com>', references: ['<orig@test.com>'], attachments: files });
+        await storedDraft({ inReplyTo: '<orig@test.com>', references: ['<orig@test.com>'], attachments: files, html: oldHtml });
 
         await adapter.updateDraft('99', update);
 
@@ -1010,7 +1023,7 @@ describe('ImapAdapter threads, drafts, attachments', () => {
       });
 
       it('replaces the old files when the update names its own', async () => {
-        await storedDraft({ attachments: files });
+        await storedDraft({ attachments: files, html: oldHtml });
 
         await adapter.updateDraft('99', {
           ...update,
@@ -1021,7 +1034,7 @@ describe('ImapAdapter threads, drafts, attachments', () => {
       });
 
       it('removes the old files when the update gives an empty list', async () => {
-        await storedDraft({ attachments: files });
+        await storedDraft({ attachments: files, html: oldHtml });
 
         await adapter.updateDraft('99', { ...update, attachments: [] });
 
