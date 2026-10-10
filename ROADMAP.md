@@ -33,15 +33,15 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       only from that one folder, because a path chosen by the assistant could otherwise mail out
       any local file. Open: a live test per provider (Gmail, Outlook, iCloud or IMAP: send and
       draft with a PDF), (the setting itself is in place, see the end of this line). Since 2026-10-04 a draft
-      update keeps the draft's files on Gmail, iCloud and IMAP too when none are passed (prepared
-      for release as 1.10.1, tag and publish pending; the live test also covers updating a draft that has a file). Outlook is
+      update keeps the draft's files on Gmail, iCloud and IMAP too when none are passed (released
+      as 1.10.1 on 2026-10-04, npm latest; the live test also covers updating a draft that has a file). Outlook is
       limited to 3 MB per message
       with a clear error; upload sessions for larger files are not built, by decision of
       2026-10-03. Built on top (pull request #21 by @jonboy648): threaded replies, reply drafts
       and opt-in forwarding of the original attachments; the live test per provider also
-      covers a threaded reply and a reply draft. Prepared for release as 1.10.0 on 2026-10-03 (tag and publish pending), and
+      covers a threaded reply and a reply draft. Released as 1.10.0 on 2026-10-03, and
       `EMAIL_MCP_ATTACHMENTS_DIR` is set to `~/Documents/email-outbox` in the Infisical Dotfiles
-      project for Marlin's own use (2026-10-04)
+      project for Marlin's own use (2026-10-10)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)
@@ -124,3 +124,13 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
 - [ ] Marlin: open the scroll-driven demo at https://email.lumitra.co/demo/ on a real iPhone once
       and check touch scrolling through the pinned acts, the top tab strip, the tool rail and the
       copy buttons; only verified in headless Chrome so far (2026-09-10)
+- [ ] Triage two GitHub issues that have no reply yet. #43, opened 2026-10-04 by an outside
+      user: a feature request for a remote, hosted transport (Streamable HTTP, the network
+      transport of the Model Context Protocol, MCP) so that hosted MCP clients such as ChatGPT
+      can connect, while stdio stays; the author offers to implement it. Note for the answer: the
+      Google verification above rests on a local-only data flow. #25, opened 2026-09-27: an
+      unsolicited outreach from HOL (Hashgraph Online) asking whether email-mcp would contribute
+      an extension to HOL Guard (their tool that asks for approval before an agent runs a
+      command) so that `email_delete` needs review; the pull request would go to their
+      repository, none is needed here. Draft the replies in Marlin's voice for his send; never
+      post without his go (2026-10-10)
