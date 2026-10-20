@@ -123,7 +123,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       Claude Code then listed all 10 folders through the reconnected server (2026-09-18)
 - [ ] Marlin: open the scroll-driven demo at https://email.lumitra.co/demo/ on a real iPhone once
       and check touch scrolling through the pinned acts, the top tab strip, the tool rail and the
-      copy buttons; only verified in headless Chrome so far (2026-09-10)
+      copy buttons; only verified in headless Chrome so far (2026-10-20)
 - [ ] Triage two GitHub issues that have no reply yet. #43, opened 2026-10-04 by an outside
       user: a feature request for a remote, hosted transport (Streamable HTTP, the network
       transport of the Model Context Protocol, MCP) so that hosted MCP clients such as ChatGPT
