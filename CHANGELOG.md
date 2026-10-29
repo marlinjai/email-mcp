@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - **Gmail mail carries the signature by default.** A text-only body from a Gmail account now goes out with an HTML part as well (multipart/alternative), because the signature exists as HTML. Pass `signature: false` for the old behaviour.
-- **The From header names the sender.** Gmail uses the send-as display name, iCloud and IMAP the account's name (unless it is only a provider label such as "Gmail" or "iCloud"). A draft sent later from another mail program, such as Apple Mail, keeps that name instead of a bare address.
+- **The From header names the sender.** Gmail uses the send-as display name, iCloud and IMAP the account's name (unless it is only a label: a provider name such as "Gmail" or "iCloud", or the address's local part). Gmail often keeps no display name for a primary address; set one under "Send mail as" in Gmail's settings. A draft sent later from another mail program, such as Apple Mail, keeps that name instead of a bare address.
 
 ### Fixed
 - **A forward of a text-only message no longer has an empty HTML part** when the note is HTML. The original's text is carried into the HTML part, and the forwarded header fields are HTML-escaped.

@@ -45,20 +45,23 @@ export function toAddress(contact: Contact): Mail.Address | string {
 
 // The names the setup wizard suggests for an account. They label the account
 // in this server; as a display name they would read "Gmail <me@example.com>".
+// The address's local part ("founder" for founder@...) is a label too.
 const PROVIDER_LABELS = new Set(['gmail', 'outlook', 'icloud', 'imap']);
 
 /**
  * The From address with a display name, so a recipient (and a client that
  * later sends a draft, such as Apple Mail) sees a name instead of a bare
  * address. `displayName` is the provider's own (Gmail's send-as name); the
- * account's name stands in only when it is a real name, not a provider label
- * or the address itself. Without either the address goes out bare.
+ * account's name stands in only when it is a real name, not a provider label,
+ * the address or its local part. Without either the address goes out bare.
  */
 export function fromAddress(email: string, displayName: string | undefined, accountName: string | undefined): Mail.Address | string {
   const own = displayName?.trim();
   if (own) return { name: own, address: email };
   const fallback = accountName?.trim();
-  if (fallback && !PROVIDER_LABELS.has(fallback.toLowerCase()) && fallback.toLowerCase() !== email.toLowerCase()) {
+  const label = (name: string) =>
+    PROVIDER_LABELS.has(name) || name === email.toLowerCase() || name === email.toLowerCase().split('@')[0];
+  if (fallback && !label(fallback.toLowerCase())) {
     return { name: fallback, address: email };
   }
   return email;

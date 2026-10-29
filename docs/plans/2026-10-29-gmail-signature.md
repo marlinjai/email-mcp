@@ -52,8 +52,13 @@ was sent from Apple Mail the sent mail kept that nameless From.
   signature API for Outlook.com accounts; IMAP servers keep none. A signature stored in
   email-mcp's account config was rejected: it would be a second copy that drifts from the
   mail client's, the same failure as the outdated signature in old sent mail.
-- **From fallback skips provider labels.** The wizard suggests "Gmail", "Outlook",
-  "iCloud" as account names; those, or the address itself, never become a display name.
+- **From fallback skips labels.** The wizard suggests "Gmail", "Outlook", "iCloud" as
+  account names; those, the address and its local part never become a display name. The
+  live check on 2026-10-29 found exactly that case: founder@'s primary send-as has an empty
+  `displayName` (Gmail's web editor falls back to the Google profile name, which needs a
+  scope this app does not hold) and the account is named "founder". The name then has to
+  be set in Gmail's "Send mail as" settings; which one ("Marlin Jai Pohl" or "Marlin Jai",
+  both appear in founder@'s sent mail) is Marlin's call.
   When the Gmail settings cannot be read, From falls back to the account name and the
   signature outcome reports the failure. Outlook sets From itself and is unchanged.
 - **Default on** for every Gmail caller. Listed under "Changed" in the changelog.

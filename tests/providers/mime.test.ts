@@ -177,7 +177,7 @@ describe('fromAddress', () => {
   });
 
   it('never uses a provider label or the address itself as the name', () => {
-    for (const label of ['Gmail', 'outlook', 'iCloud', 'IMAP', 'ME@example.com', '  ']) {
+    for (const label of ['Gmail', 'outlook', 'iCloud', 'IMAP', 'ME@example.com', 'Me', '  ']) {
       expect(fromAddress('me@example.com', undefined, label)).toBe('me@example.com');
     }
   });
