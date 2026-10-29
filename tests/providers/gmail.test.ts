@@ -114,6 +114,7 @@ const mockFiltersCreate = vi.fn();
 const mockFiltersList = vi.fn();
 const mockFiltersDelete = vi.fn();
 const mockForwardingAddressesList = vi.fn();
+const mockSendAsList = vi.fn();
 
 // Mock googleapis
 vi.mock('googleapis', () => ({
@@ -137,6 +138,7 @@ vi.mock('googleapis', () => ({
         settings: {
           filters: { create: mockFiltersCreate, list: mockFiltersList, delete: mockFiltersDelete },
           forwardingAddresses: { list: mockForwardingAddressesList },
+          sendAs: { list: mockSendAsList },
         },
       },
     }),
@@ -200,6 +202,7 @@ function resetMocks() {
   mockFiltersCreate.mockResolvedValue({ data: { id: 'filter-1' } });
   mockFiltersList.mockResolvedValue({ data: { filter: [] } });
   mockFiltersDelete.mockResolvedValue({ data: {} });
+  mockSendAsList.mockResolvedValue({ data: { sendAs: [] } });
   mockForwardingAddressesList.mockResolvedValue({
     data: { forwardingAddresses: [{ forwardingEmail: 'expenses@example.com', verificationStatus: 'accepted' }] },
   });
@@ -890,6 +893,55 @@ describe('GmailAdapter', () => {
       expect(parsed.from?.value[0].address).toBe(testCredentials.email);
     }
 
+    describe('From carries the send-as display name', () => {
+      const from = async (raw: string) => (await parseRaw(raw)).from?.value;
+      const plain = { to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'b' } };
+
+      beforeEach(() => {
+        mockSendAsList.mockResolvedValue({
+          data: {
+            sendAs: [
+              { sendAsEmail: 'alias@example.com', displayName: 'Alias Name', isDefault: true },
+              { sendAsEmail: 'test@gmail.com', displayName: 'Marlin Jai Pohl' },
+            ],
+          },
+        });
+      });
+
+      it('on send, draft create and draft update', async () => {
+        const expected = [{ name: 'Marlin Jai Pohl', address: 'test@gmail.com' }];
+        await adapter.sendEmail(plain);
+        expect(await from(mockMessagesSend.mock.calls[0][0].requestBody.raw)).toEqual(expected);
+        await adapter.createDraft(plain);
+        expect(await from(mockDraftsCreate.mock.calls[0][0].requestBody.message.raw)).toEqual(expected);
+        await adapter.updateDraft('draft-1', plain);
+        expect(await from(mockDraftsUpdate.mock.calls[0][0].requestBody.message.raw)).toEqual(expected);
+      });
+
+      it("falls back to the account's name when the address has no display name in Gmail", async () => {
+        mockSendAsList.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'test@gmail.com', displayName: '' }] } });
+        await adapter.createDraft(plain);
+        expect(await from(mockDraftsCreate.mock.calls[0][0].requestBody.message.raw)).toEqual([
+          { name: 'Test Gmail', address: 'test@gmail.com' },
+        ]);
+      });
+
+      it("still creates the draft, named after the account, when the settings cannot be read", async () => {
+        mockSendAsList.mockRejectedValue(new Error('boom'));
+        await adapter.createDraft(plain);
+        expect(await from(mockDraftsCreate.mock.calls[0][0].requestBody.message.raw)).toEqual([
+          { name: 'Test Gmail', address: 'test@gmail.com' },
+        ]);
+      });
+
+      it('leaves From bare when the account name is only the provider label', async () => {
+        mockSendAsList.mockResolvedValue({ data: { sendAs: [] } });
+        await adapter.connect({ ...testCredentials, name: 'Gmail' });
+        await adapter.sendEmail(plain);
+        expect(await from(mockMessagesSend.mock.calls[0][0].requestBody.raw)).toEqual([{ name: '', address: 'test@gmail.com' }]);
+      });
+    });
+
     it('sendEmail keeps both the text and the html part', async () => {
       await adapter.sendEmail(rich);
       await expectRichMessage(mockMessagesSend.mock.calls[0][0].requestBody.raw);
@@ -1145,6 +1197,50 @@ describe('GmailAdapter', () => {
     it('calls filters.delete with the rule id', async () => {
       await adapter.deleteBlockRule('filter-1');
       expect(mockFiltersDelete).toHaveBeenCalledWith({ userId: 'me', id: 'filter-1' });
+    });
+  });
+
+  describe('getSignature', () => {
+    it('reads the signature of the address the From header names, not just the default', async () => {
+      mockSendAsList.mockResolvedValue({
+        data: {
+          sendAs: [
+            { sendAsEmail: 'alias@example.com', isDefault: true, signature: '<b>Alias</b>' },
+            { sendAsEmail: 'Test@Gmail.com', isPrimary: true, signature: ' <b>Test</b> ' },
+          ],
+        },
+      });
+      expect(await adapter.getSignature()).toEqual({ sendAs: 'Test@Gmail.com', html: '<b>Test</b>' });
+      expect(mockSendAsList).toHaveBeenCalledWith({ userId: 'me' });
+    });
+
+    it('falls back to the default send-as address when the own address is not listed', async () => {
+      mockSendAsList.mockResolvedValue({
+        data: { sendAs: [{ sendAsEmail: 'alias@example.com', isDefault: true, signature: '<b>Alias</b>' }] },
+      });
+      expect(await adapter.getSignature()).toEqual({ sendAs: 'alias@example.com', html: '<b>Alias</b>' });
+    });
+
+    it('returns null html when the address has no signature', async () => {
+      mockSendAsList.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'test@gmail.com', signature: '' }] } });
+      expect(await adapter.getSignature()).toEqual({ sendAs: 'test@gmail.com', html: null });
+    });
+
+    it('reads the settings on every call, so a changed signature applies at once', async () => {
+      mockSendAsList.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'test@gmail.com', signature: 'old' }] } });
+      await adapter.getSignature();
+      mockSendAsList.mockResolvedValue({ data: { sendAs: [{ sendAsEmail: 'test@gmail.com', signature: 'new' }] } });
+      expect((await adapter.getSignature()).html).toBe('new');
+      expect(mockSendAsList).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws when Gmail lists no usable send-as address', async () => {
+      await expect(adapter.getSignature()).rejects.toThrow('Gmail lists no send-as address for test@gmail.com');
+    });
+
+    it('passes an API error on (the tool layer reports it)', async () => {
+      mockSendAsList.mockRejectedValue(new Error('Request had insufficient authentication scopes.'));
+      await expect(adapter.getSignature()).rejects.toThrow('insufficient authentication scopes');
     });
   });
 

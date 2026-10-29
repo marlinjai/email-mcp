@@ -102,6 +102,12 @@ export interface EmailProvider {
   listBlockRules?(): Promise<BlockRule[]>;
   deleteBlockRule?(ruleId: string): Promise<void>;
 
+  // Signature of the address this adapter sends from, as HTML (optional,
+  // Gmail only: see docs/plans/2026-10-29-gmail-signature.md). null when that
+  // address has no signature. The tool layer appends it to outgoing mail;
+  // providers without a signature API (Outlook.com, iCloud, IMAP) omit it.
+  getSignature?(): Promise<{ sendAs: string; html: string | null }>;
+
   // Forwarding rules (optional, Gmail and Outlook only; see
   // docs/plans/2026-10-02-forward-rules.md). The allowlist check on the
   // target address happens in the tool layer, before any of these is called.

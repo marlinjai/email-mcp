@@ -42,6 +42,10 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       covers a threaded reply and a reply draft. Released as 1.10.0 on 2026-10-03, and
       `EMAIL_MCP_ATTACHMENTS_DIR` is set to `~/Documents/email-outbox` in the Infisical Dotfiles
       project for Marlin's own use (2026-10-10)
+- [ ] Account signatures and a named From ([plan](docs/plans/2026-10-29-gmail-signature.md)):
+      the five sending tools add the Gmail send-as signature (opt out with
+      `signature: false`) and From carries the display name. Open: release and the live
+      check on founder@marlinjai.com (2026-10-29)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)

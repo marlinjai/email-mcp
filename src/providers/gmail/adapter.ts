@@ -19,13 +19,14 @@ import type {
 } from '../../models/types.js';
 import { ProviderType } from '../../models/types.js';
 import { mapGmailLabel, mapGmailMessage, buildGmailQuery, extractBody } from './mapper.js';
-import { buildMimeMessage } from '../mime.js';
+import { buildMimeMessage, fromAddress } from '../mime.js';
 
 export class GmailAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Gmail;
   private gmail: gmail_v1.Gmail | null = null;
   private accountId: string = '';
   private email: string = '';
+  private accountName: string = '';
 
   async connect(credentials: AccountCredentials): Promise<void> {
     if (!credentials.oauth) {
@@ -33,6 +34,7 @@ export class GmailAdapter implements EmailProvider {
     }
     this.accountId = credentials.id;
     this.email = credentials.email;
+    this.accountName = credentials.name;
 
     const auth = new OAuth2Client();
     auth.setCredentials({
@@ -277,6 +279,47 @@ export class GmailAdapter implements EmailProvider {
     });
 
     return { id: res.data.id || draftId };
+  }
+
+  /**
+   * The signature Gmail's own editor would add: the one of the send-as
+   * address the From header names (`this.email`, see buildRaw), or the
+   * default send-as when that address is not listed. Read on every call, so
+   * a signature changed in Gmail's settings applies to the next mail.
+   */
+  async getSignature(): Promise<{ sendAs: string; html: string | null }> {
+    const entries = await this.sendAsList();
+    const entry = this.ownSendAs(entries) || entries.find((e) => e.isDefault);
+    if (!entry) throw new Error(`Gmail lists no send-as address for ${this.email}`);
+    const html = (entry.signature || '').trim();
+    return { sendAs: entry.sendAsEmail || this.email, html: html || null };
+  }
+
+  private async sendAsList(): Promise<gmail_v1.Schema$SendAs[]> {
+    const gmail = this.ensureConnected();
+    const res = await gmail.users.settings.sendAs.list({ userId: 'me' });
+    return res.data.sendAs || [];
+  }
+
+  private ownSendAs(entries: gmail_v1.Schema$SendAs[]): gmail_v1.Schema$SendAs | undefined {
+    const own = this.email.toLowerCase();
+    return entries.find((e) => (e.sendAsEmail || '').toLowerCase() === own);
+  }
+
+  /**
+   * The From header: the account's address with the display name Gmail
+   * keeps for it as a send-as address. When the settings cannot be read the
+   * mail still goes out, named after the account (see `fromAddress`); the
+   * signature outcome in the tool result already reports that failure.
+   */
+  private async from() {
+    let displayName: string | undefined;
+    try {
+      displayName = this.ownSendAs(await this.sendAsList())?.displayName || undefined;
+    } catch {
+      displayName = undefined;
+    }
+    return fromAddress(this.email, displayName, this.accountName);
   }
 
   async listDrafts(limit?: number, _offset?: number): Promise<Email[]> {
@@ -808,7 +851,7 @@ export class GmailAdapter implements EmailProvider {
    * and any attachments. See `buildMimeMessage`.
    */
   private async buildRaw(params: SendEmailParams): Promise<string> {
-    const message = await buildMimeMessage(this.email, params);
+    const message = await buildMimeMessage(await this.from(), params);
     return message.toString('base64url');
   }
 }

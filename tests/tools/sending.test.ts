@@ -863,4 +863,133 @@ describe('Sending tools', () => {
       expect(mockProvider.sendEmail).not.toHaveBeenCalled();
     });
   });
+
+  describe('account signature', () => {
+    const SIG = '<div>Marlin Jai Pohl<br><img src="https://marlinjai.com/email/signature-gold-v1.png"></div>';
+    let getSignature: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      getSignature = vi.fn().mockResolvedValue({ sendAs: 'founder@example.com', html: SIG });
+      mockProvider = makeMockProvider({ providerType: 'gmail', getSignature } as Partial<EmailProvider>);
+      (accountManager.getProvider as any).mockResolvedValue(mockProvider);
+    });
+
+    const sentBody = () => ((mockProvider.sendEmail as any).mock.calls[0][0] as SendEmailParams).body;
+    const draftBody = () => ((mockProvider.createDraft as any).mock.calls[0][0] as SendEmailParams).body;
+    const updateBody = (n = 0) => ((mockProvider.updateDraft as any).mock.calls[n][1] as SendEmailParams).body;
+    const outcome = (result: { content: Array<{ text: string }> }) => JSON.parse(result.content[0].text).signature;
+    const count = (html: string | undefined) => (html ?? '').split('class="gmail_signature"').length - 1;
+
+    const calls: Array<[string, Record<string, unknown>, () => SendEmailParams['body']]> = [
+      ['email_send', { to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'Hi' } }, sentBody],
+      ['email_reply', { emailId: 'msg-1', body: { text: 'Hi' } }, sentBody],
+      ['email_forward', { emailId: 'msg-1', to: [{ email: 'dave@example.com' }], body: { text: 'Hi' } }, sentBody],
+      ['email_draft_create', { to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'Hi' } }, draftBody],
+      ['email_draft_update', { draftId: 'draft-1', to: [{ email: 'bob@example.com' }], subject: 'S', body: { text: 'Hi' } }, updateBody],
+    ];
+
+    describe.each(calls)('%s', (tool, args, body) => {
+      it('adds the signature of the send-as address and says so', async () => {
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args });
+        expect(outcome(result)).toEqual({ status: 'added', sendAs: 'founder@example.com' });
+        expect(count(body().html)).toBe(1);
+        expect(body().html).toContain('<span class="gmail_signature_prefix">-- </span>');
+        expect(body().text).toContain('-- \nMarlin Jai Pohl');
+      });
+
+      it('leaves the body alone with signature: false', async () => {
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args, signature: false });
+        expect(outcome(result)).toEqual({ status: 'disabled' });
+        expect(getSignature).not.toHaveBeenCalled();
+        expect(body().html ?? '').not.toContain('gmail_signature');
+      });
+
+      it('does not add a second one when the body already holds it', async () => {
+        const html = `<p>Hi</p><div><span class="gmail_signature_prefix">-- </span><br><div class="gmail_signature">${SIG}</div></div>`;
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args, body: { html } });
+        expect(outcome(result)).toEqual({ status: 'already_present' });
+        expect(count(body().html)).toBe(1);
+      });
+
+      it('still goes ahead without a signature when it cannot be read, and gives the reason', async () => {
+        getSignature.mockRejectedValue(new Error('Request had insufficient authentication scopes.'));
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args });
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.error).toBeUndefined();
+        expect(parsed.id).toBeTruthy();
+        expect(parsed.signature).toEqual({
+          status: 'skipped',
+          reason: 'The signature could not be read, so none was added: Request had insufficient authentication scopes.',
+        });
+        expect(body().html ?? '').not.toContain('gmail_signature');
+      });
+
+      it('reports an address without a signature', async () => {
+        getSignature.mockResolvedValue({ sendAs: 'billing@example.com', html: null });
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args });
+        expect(outcome(result)).toMatchObject({ status: 'none_configured', sendAs: 'billing@example.com' });
+      });
+
+      it('reports a provider without a signature API instead of faking one', async () => {
+        mockProvider = makeMockProvider({ providerType: 'outlook' });
+        (accountManager.getProvider as any).mockResolvedValue(mockProvider);
+        const result = await callTool(server, tool, { accountId: 'acct-1', ...args });
+        expect(outcome(result)).toMatchObject({ status: 'unsupported', reason: expect.stringContaining('Microsoft Graph') });
+        expect(body().html ?? '').not.toContain('gmail_signature');
+      });
+    });
+
+    it('email_draft_update does not stack signatures over repeated updates', async () => {
+      const update = (body: SendEmailParams['body']) =>
+        callTool(server, 'email_draft_update', { accountId: 'acct-1', draftId: 'draft-1', to: [{ email: 'b@example.com' }], subject: 'S', body });
+      await update({ text: 'First version' });
+      const first = updateBody(0);
+      expect(count(first.html)).toBe(1);
+      // The caller passes back what the draft now holds, edited.
+      const second = await update({ html: first.html!.replace('First', 'Second'), text: first.text!.replace('First', 'Second') });
+      expect(outcome(second)).toEqual({ status: 'already_present' });
+      expect(count(updateBody(1).html)).toBe(1);
+      // Or only the text part of it.
+      await update({ text: first.text!.replace('First', 'Third') });
+      expect(updateBody(2).text!.split('-- \n').length - 1).toBe(1);
+      expect(updateBody(2).html).toBeUndefined();
+    });
+
+    it('email_forward places the signature between the note and the forwarded message', async () => {
+      await callTool(server, 'email_forward', { accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'd@example.com' }], body: { text: 'FYI' } });
+      const { text, html } = sentBody();
+      expect(text!.indexOf('FYI')).toBeLessThan(text!.indexOf('-- \nMarlin'));
+      expect(text!.indexOf('-- \nMarlin')).toBeLessThan(text!.indexOf('Forwarded message'));
+      expect(html!.indexOf('gmail_signature')).toBeLessThan(html!.indexOf('class="gmail_quote"'));
+    });
+
+    it('email_forward without a note still signs, and keeps a text-only original in the HTML part', async () => {
+      (mockProvider.getEmail as any).mockResolvedValue(makeEmail({ subject: 'a <b>', body: { text: 'Original <text>' } }));
+      await callTool(server, 'email_forward', { accountId: 'acct-1', emailId: 'msg-1', to: [{ email: 'd@example.com' }] });
+      const { html } = sentBody();
+      expect(count(html)).toBe(1);
+      expect(html).toContain('<div dir="ltr">Original &lt;text&gt;</div>');
+      expect(html).toContain('Subject: a &lt;b&gt;<br/>');
+    });
+
+    it('email_reply signs above quoted history the caller included', async () => {
+      const html = '<p>Sure.</p><div class="gmail_quote">On Mon, Bob wrote:<blockquote>old</blockquote></div>';
+      await callTool(server, 'email_reply', { accountId: 'acct-1', emailId: 'msg-1', body: { html } });
+      const sent = sentBody().html!;
+      expect(sent.indexOf('gmail_signature')).toBeGreaterThan(sent.indexOf('Sure.'));
+      expect(sent.indexOf('gmail_signature')).toBeLessThan(sent.indexOf('class="gmail_quote"'));
+    });
+
+    it('does not read the signature when an attachment is invalid', async () => {
+      const result = await callTool(server, 'email_send', {
+        accountId: 'acct-1',
+        to: [{ email: 'bob@example.com' }],
+        subject: 'S',
+        body: { text: 'Hi' },
+        attachments: [{ content: 'AAAA' }],
+      });
+      expect(JSON.parse(result.content[0].text).error).toBeTruthy();
+      expect(getSignature).not.toHaveBeenCalled();
+    });
+  });
 });
