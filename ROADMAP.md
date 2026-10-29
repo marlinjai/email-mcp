@@ -46,9 +46,10 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       the five sending tools add the Gmail send-as signature (opt out with
       `signature: false`) and From carries the display name. Live-checked on
       founder@marlinjai.com on 2026-10-29 (gold signature added once, no stacking on update,
-      opt-out honoured, test drafts deleted). Open: tag v1.11.0 and the npm publish after the
-      pull request lands, then Marlin sets a display name for founder@ under Gmail's "Send mail
-      as" (it is empty there, so From stays a bare address until then) (2026-10-29)
+      opt-out honoured, test drafts deleted). Released as 1.11.0 on
+      2026-10-29 (pull request #47, tag v1.11.0, npm publish through the workflow, GitHub
+      release). Open: Marlin sets a display name for founder@ under Gmail's "Send mail as"
+      (it is empty there, so From stays a bare address until then) (2026-10-29)
 - [ ] Google OAuth (Open Authorization) verification for the Gmail integration: one gate
       left, the security assessment. Marlin's reply of 2026-09-27 (new demo video
       https://youtu.be/L7g0q9khjA0, privacy policy section on how sensitive data is protected)
