@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-29
+
+Signatures and a named sender. A minor release: a new `signature` input and result field on the five sending tools, nothing renamed or removed. Gmail mail now carries the account's signature by default (see "Changed").
+
 ### Added
 - **Gmail signatures on outgoing mail.** `email_send`, `email_reply`, `email_forward`, `email_draft_create` and `email_draft_update` add the signature of the send-as address the mail goes out from, read from Gmail's settings on every call, in Gmail's own markup and above any quoted history, with a plain-text rendering in the text part. It is what Gmail's web editor does and the Gmail API does not. A body that already holds a signature is left alone, so updating a draft never stacks a second one. `signature: false` turns it off per call.
 - **A `signature` field in the result of those five tools**, saying what happened: `added`, `already_present`, `disabled`, `none_configured`, `unsupported` (Outlook, iCloud, IMAP, which have no signature a client can read) or `skipped` with the reason when the signature could not be read. The mail or draft goes ahead in every case.
@@ -303,6 +307,7 @@ Merged four community contributions (thank you [@EduardF1](https://github.com/Ed
 - AES-256-GCM encrypted credential storage
 - Sequential fallback for batch operations on providers without native batch support
 
+[1.11.0]: https://github.com/marlinjai/email-mcp/compare/v1.10.1...v1.11.0
 [1.10.1]: https://github.com/marlinjai/email-mcp/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/marlinjai/email-mcp/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/marlinjai/email-mcp/compare/v1.8.1...v1.9.0
