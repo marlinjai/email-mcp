@@ -4,6 +4,7 @@ import type { AccountManager } from '../account-manager.js';
 import type { SendEmailParams } from '../providers/provider.js';
 import type { Contact, Email } from '../models/types.js';
 import { AttachmentsSchema, assertAttachmentTotal, resolveAttachments } from './attachments.js';
+import { escapeHtml, resolveSignature, textToHtml } from './signature.js';
 
 const ContactSchema = z.object({
   email: z.string(),
@@ -14,6 +15,13 @@ const BodySchema = z.object({
   text: z.string().optional(),
   html: z.string().optional(),
 });
+
+const SignatureSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    "Add the account's signature (default true). Gmail: the signature of the send-as address the mail goes out from, read from Gmail's settings, in Gmail's own markup above any quoted history; a body that already holds one is left alone. Outlook.com, iCloud and IMAP have no signature a client can read, so nothing is added there. The result's `signature` field says what happened",
+  );
 
 function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
@@ -69,20 +77,23 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema,
+      signature: SignatureSchema,
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
+        const attachments = resolveAttachments(args.attachments);
+        const { body, signature } = await resolveSignature(provider, args.body, args.signature);
         const params: SendEmailParams = {
           to: args.to,
           cc: args.cc,
           bcc: args.bcc,
           subject: args.subject,
-          body: args.body,
-          attachments: resolveAttachments(args.attachments),
+          body,
+          attachments,
         };
         const result = await provider.sendEmail(params);
-        return jsonResult(result);
+        return jsonResult({ ...result, signature });
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }
@@ -110,6 +121,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         .optional()
         .describe('Extra To recipients added to the default or given To (deduplicated by address)'),
       attachments: AttachmentsSchema,
+      signature: SignatureSchema,
     },
     async (args) => {
       try {
@@ -150,18 +162,20 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         if (args.cc !== undefined) cc = args.cc;
         if (args.replyAll) ({ to, cc } = withoutDuplicates(to, cc));
 
+        const attachments = resolveAttachments(args.attachments);
+        const { body, signature } = await resolveSignature(provider, args.body, args.signature);
         const params: SendEmailParams = {
           to,
           cc,
           bcc: args.bcc,
           subject,
-          body: args.body,
+          body,
           ...replyThreading(original),
-          attachments: resolveAttachments(args.attachments),
+          attachments,
         };
 
         const result = await provider.sendEmail(params);
-        return jsonResult(result);
+        return jsonResult({ ...result, signature });
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }
@@ -185,11 +199,16 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         .optional()
         .describe('Also forward the original message\'s attachments (default false). Leave it off unless the user asked for the files to go along'),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
+      signature: SignatureSchema,
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
         const original = await provider.getEmail(args.emailId, args.sourceFolder);
+
+        // The signature goes on the note, so it ends up between the note and
+        // the forwarded message, where Gmail's editor puts it.
+        const { body: note, signature } = await resolveSignature(provider, args.body ?? {}, args.signature);
 
         // Build subject with Fwd: prefix (avoid duplicating)
         const subject = original.subject.startsWith('Fwd: ')
@@ -206,7 +225,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
           '',
         ].join('\n');
 
-        const additionalText = args.body?.text ?? '';
+        const additionalText = note.text ?? '';
         const originalText = original.body.text ?? '';
         const forwardedText = [
           additionalText,
@@ -216,19 +235,25 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         ].join('');
 
         let forwardedHtml: string | undefined;
-        if (original.body.html || args.body?.html) {
-          const additionalHtml = args.body?.html ?? '';
-          const originalHtml = original.body.html ?? '';
+        if (original.body.html || note.html) {
+          const additionalHtml = note.html ?? '';
+          // A text-only original still needs its content in the HTML part
+          // once the note has one (a signature always brings one).
+          const originalHtml = original.body.html ?? textToHtml(original.body.text ?? '');
+          const contact = (c: { name?: string; email: string }) =>
+            escapeHtml(c.name ? `${c.name} <${c.email}>` : c.email);
           forwardedHtml = [
             additionalHtml,
             '<br/><hr/>',
+            '<div class="gmail_quote">',
             `<b>---------- Forwarded message ----------</b><br/>`,
-            `From: ${original.from.name ? `${original.from.name} &lt;${original.from.email}&gt;` : original.from.email}<br/>`,
-            `Date: ${original.date}<br/>`,
-            `Subject: ${original.subject}<br/>`,
-            `To: ${original.to.map((c) => (c.name ? `${c.name} &lt;${c.email}&gt;` : c.email)).join(', ')}<br/>`,
+            `From: ${contact(original.from)}<br/>`,
+            `Date: ${escapeHtml(original.date)}<br/>`,
+            `Subject: ${escapeHtml(original.subject)}<br/>`,
+            `To: ${original.to.map(contact).join(', ')}<br/>`,
             '<br/>',
             originalHtml,
+            '</div>',
           ].join('');
         }
 
@@ -262,7 +287,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         };
 
         const result = await provider.sendEmail(params);
-        return jsonResult(result);
+        return jsonResult({ ...result, signature });
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }
@@ -287,21 +312,25 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         .string()
         .optional()
         .describe('Folder of the email named in inReplyToEmailId (required for IMAP/iCloud when that email is not in INBOX). The draft itself is saved to Drafts'),
+      signature: SignatureSchema,
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
+        const attachments = resolveAttachments(args.attachments);
+        const threading = args.inReplyToEmailId
+          ? replyThreading(await provider.getEmail(args.inReplyToEmailId, args.inReplyToSourceFolder))
+          : {};
+        const { body, signature } = await resolveSignature(provider, args.body, args.signature);
         const params: SendEmailParams = {
           to: args.to,
           subject: args.subject,
-          body: args.body,
-          attachments: resolveAttachments(args.attachments),
+          body,
+          attachments,
+          ...threading,
         };
-        if (args.inReplyToEmailId) {
-          Object.assign(params, replyThreading(await provider.getEmail(args.inReplyToEmailId, args.inReplyToSourceFolder)));
-        }
         const result = await provider.createDraft(params);
-        return jsonResult(result);
+        return jsonResult({ ...result, signature });
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }
@@ -322,18 +351,23 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
         "Files to attach. When given, they replace the draft's current attachments; an empty list removes them all. When omitted, the draft keeps the files it has.",
       ),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when the draft is not in the default Drafts folder)'),
+      signature: SignatureSchema.describe(
+        "Add the account's signature (default true), as on email_draft_create. The body given here replaces the draft's body, so the signature is added to it once; a body that already holds one (passed back from the draft) is left alone, so repeated updates never stack a second one",
+      ),
     },
     async (args) => {
       try {
         const provider = await accountManager.getProvider(args.accountId);
+        const attachments = resolveAttachments(args.attachments);
+        const { body, signature } = await resolveSignature(provider, args.body, args.signature);
         const params: SendEmailParams = {
           to: args.to,
           subject: args.subject,
-          body: args.body,
-          attachments: resolveAttachments(args.attachments),
+          body,
+          attachments,
         };
         const result = await provider.updateDraft(args.draftId, params, args.sourceFolder);
-        return jsonResult(result);
+        return jsonResult({ ...result, signature });
       } catch (error: any) {
         return jsonResult({ error: error.message });
       }

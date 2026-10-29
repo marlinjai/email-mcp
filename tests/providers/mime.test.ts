@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { simpleParser } from 'mailparser';
-import { buildMimeMessage, htmlToText, normalizeBody } from '../../src/providers/mime.js';
+import { buildMimeMessage, fromAddress, htmlToText, normalizeBody } from '../../src/providers/mime.js';
 import type { SendEmailParams } from '../../src/providers/provider.js';
 
 const FROM = 'me@example.com';
@@ -164,6 +164,32 @@ describe('buildMimeMessage', () => {
     expect(headerBlock(raw)).toMatch(/Content-Type: text\/plain/);
     expect(parsed.html).toBe(false);
     expect(parsed.subject).toBe('Hello');
+  });
+});
+
+describe('fromAddress', () => {
+  it("uses the provider's display name first", () => {
+    expect(fromAddress('me@example.com', ' Marlin Jai Pohl ', 'Founder')).toEqual({ name: 'Marlin Jai Pohl', address: 'me@example.com' });
+  });
+
+  it("falls back to the account's name", () => {
+    expect(fromAddress('me@example.com', '', 'Marlin Jai Pohl')).toEqual({ name: 'Marlin Jai Pohl', address: 'me@example.com' });
+  });
+
+  it('never uses a provider label or the address itself as the name', () => {
+    for (const label of ['Gmail', 'outlook', 'iCloud', 'IMAP', 'ME@example.com', 'Me', '  ']) {
+      expect(fromAddress('me@example.com', undefined, label)).toBe('me@example.com');
+    }
+  });
+
+  it('is encoded and quoted in the built message', async () => {
+    const raw = await buildMimeMessage(fromAddress('me@example.com', 'Pohl, Marlin Jäi', undefined), {
+      to: [{ email: 'a@example.com' }],
+      subject: 'S',
+      body: { text: 'b' },
+    });
+    const parsed = await simpleParser(raw);
+    expect(parsed.from?.value).toEqual([{ name: 'Pohl, Marlin Jäi', address: 'me@example.com' }]);
   });
 });
 

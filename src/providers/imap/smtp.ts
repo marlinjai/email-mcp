@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { SendEmailParams } from '../provider.js';
+import type Mail from 'nodemailer/lib/mailer/index.js';
 import { normalizeBody, toAddress } from '../mime.js';
 import type { PasswordCredentials } from '../../models/types.js';
 
@@ -14,7 +15,7 @@ export function createSmtpTransport(email: string, creds: PasswordCredentials) {
 
 export async function sendViaSmtp(
   transport: ReturnType<typeof nodemailer.createTransport>,
-  from: string,
+  from: Mail.Address | string,
   params: SendEmailParams
 ): Promise<string> {
   // nodemailer only builds multipart/alternative when it gets both parts; it

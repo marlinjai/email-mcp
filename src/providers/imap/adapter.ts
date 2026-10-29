@@ -15,7 +15,7 @@ import type {
 import { ProviderType, FolderType } from '../../models/types.js';
 import { mapImapFolder, mapParsedEmail, imapAttachmentId } from './mapper.js';
 import { createSmtpTransport, sendViaSmtp } from './smtp.js';
-import { buildMimeMessage } from '../mime.js';
+import { buildMimeMessage, fromAddress } from '../mime.js';
 
 /**
  * Extracts detailed diagnostic information from ImapFlow errors.
@@ -58,6 +58,7 @@ export class ImapAdapter implements EmailProvider {
   protected client: InstanceType<typeof ImapFlow> | null = null;
   protected accountId: string = '';
   protected email: string = '';
+  protected accountName: string = '';
   protected passwordCreds: PasswordCredentials | null = null;
   private connectingPromise: Promise<void> | null = null;
 
@@ -67,6 +68,7 @@ export class ImapAdapter implements EmailProvider {
     }
     this.accountId = credentials.id;
     this.email = credentials.email;
+    this.accountName = credentials.name;
     this.passwordCreds = credentials.password;
     await this.ensureConnected();
   }
@@ -587,7 +589,7 @@ export class ImapAdapter implements EmailProvider {
   async sendEmail(params: SendEmailParams): Promise<{ id: string; threadId?: string }> {
     if (!this.passwordCreds) throw new Error('No credentials available');
     const transport = createSmtpTransport(this.email, this.passwordCreds);
-    const messageId = await sendViaSmtp(transport, this.email, params);
+    const messageId = await sendViaSmtp(transport, this.from(), params);
     return { id: messageId };
   }
 
@@ -597,7 +599,13 @@ export class ImapAdapter implements EmailProvider {
    * attachments. See `buildMimeMessage`.
    */
   private buildDraftMessage(params: SendEmailParams): Promise<Buffer> {
-    return buildMimeMessage(this.email, params);
+    return buildMimeMessage(this.from(), params);
+  }
+
+  /** IMAP keeps no display name on the server, so the account's name is the
+   *  only one there is (see `fromAddress`). */
+  private from() {
+    return fromAddress(this.email, undefined, this.accountName);
   }
 
   async createDraft(params: SendEmailParams): Promise<{ id: string }> {

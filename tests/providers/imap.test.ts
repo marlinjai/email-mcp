@@ -367,6 +367,7 @@ describe('ImapAdapter send, move, delete, mark, createFolder', () => {
   });
 
   it('sendEmail calls SMTP transport with correct params', async () => {
+    await adapter.connect({ ...testCredentials, name: 'Tess Example' });
     const result = await adapter.sendEmail({
       to: [{ name: 'Bob', email: 'bob@test.com' }],
       subject: 'Hello',
@@ -375,7 +376,7 @@ describe('ImapAdapter send, move, delete, mark, createFolder', () => {
     expect(result.id).toBeTruthy();
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({
-        from: 'test@example.com',
+        from: { name: 'Tess Example', address: 'test@example.com' },
         to: [{ name: 'Bob', address: 'bob@test.com' }],
         subject: 'Hello',
         text: 'Hi Bob',
@@ -595,6 +596,19 @@ describe('ImapAdapter threads, drafts, attachments', () => {
       expect.any(Buffer),
       expect.arrayContaining(['\\Draft', '\\Seen']),
     );
+  });
+
+  it('createDraft names the sender with the account name in From', async () => {
+    await adapter.connect({ ...testCredentials, name: 'Tess Example' });
+    await adapter.createDraft({ to: [{ email: 'bob@test.com' }], subject: 'S', body: { text: 'b' } });
+    const client = (adapter as any).client;
+    expect(client.append.mock.calls[0][1].toString()).toContain('From: Tess Example <test@example.com>');
+  });
+
+  it.each(['iCloud', 'Test'])('leaves From bare when the account name %s is only a label', async (name) => {
+    await adapter.connect({ ...testCredentials, name });
+    await adapter.sendEmail({ to: [{ email: 'bob@test.com' }], subject: 'S', body: { text: 'b' } });
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'test@example.com' }));
   });
 
   it('updateDraft deletes the old revision and appends a new one, returning a new id', async () => {
