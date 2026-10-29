@@ -5,7 +5,7 @@ summary: >
   Gmail's web editor does, and the From header carries a display name.
   Outlook, iCloud and IMAP report that they have no signature to add.
 type: plan
-status: in-progress
+status: completed
 tags: [email-mcp, gmail, signature, sending]
 projects: [email-mcp]
 date: 2026-10-29
