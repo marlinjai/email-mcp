@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { getDataDir } from '../config.js';
 import type { AccountCredentials } from '../models/types.js';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -61,29 +62,25 @@ function computeStableMachineId(): string | null {
   return null;
 }
 
-/**
- * Ordered list of seed candidates used to derive the encryption key.
- *
- * The first entry is the preferred (most stable) seed used for new writes; the
- * remaining entries let credential files written by an older version — or
- * before a hostname change — still be decrypted, after which they are
- * transparently re-encrypted with the preferred seed.
- */
+/** Require a separately generated secret; machine identifiers are public metadata. */
+export function requireEncryptionKey(): string {
+  const key = process.env.EMAIL_MCP_KEY;
+  if (!key || key.length < 32) {
+    throw new Error('Set EMAIL_MCP_KEY to an independently generated secret of at least 32 characters before setup or startup.');
+  }
+  return key;
+}
+
+/** Return the required secret seed first, adding machine-derived seeds only for explicit legacy migration. */
 function getSeedCandidates(): string[] {
-  const seeds: string[] = [];
-  const username = os.userInfo().username;
-
-  // 1. Explicit user-provided key always wins and is fully portable.
-  const envKey = process.env.EMAIL_MCP_KEY;
-  if (envKey) seeds.push(`email-mcp:env:${envKey}`);
-
-  // 2. Stable hardware/machine identifier (survives mDNS hostname drift).
-  const machineId = getStableMachineId();
-  if (machineId) seeds.push(`email-mcp:machine:${machineId}:${username}`);
-
-  // 3. Legacy hostname-based seed for backward compatibility / migration.
-  seeds.push(`email-mcp:${os.hostname()}:${username}`);
-
+  const seeds = [`email-mcp:env:${requireEncryptionKey()}`];
+  // Only an operator can opt into importing credentials encrypted by old versions.
+  if (process.env.EMAIL_MCP_MIGRATE_LEGACY === 'true') {
+    const username = os.userInfo().username;
+    const machineId = getStableMachineId();
+    if (machineId) seeds.push(`email-mcp:machine:${machineId}:${username}`);
+    seeds.push(`email-mcp:${os.hostname()}:${username}`);
+  }
   return seeds;
 }
 
@@ -112,7 +109,7 @@ function encrypt(plaintext: string, seed: string): string {
 /**
  * Attempts to decrypt the ciphertext against each seed candidate in order,
  * returning the plaintext and the seed that succeeded so the caller can detect
- * (and migrate away from) legacy seeds.
+ * (and explicitly migrate away from) legacy seeds.
  */
 function decrypt(ciphertext: string, seeds: string[]): { plaintext: string; seedUsed: string } {
   const { salt, iv, authTag, data } = JSON.parse(ciphertext);
@@ -138,14 +135,9 @@ function decrypt(ciphertext: string, seeds: string[]): { plaintext: string; seed
   throw lastError ?? new Error('Unable to decrypt credentials');
 }
 
-/**
- * Encrypts a string with the same AES-256-GCM scheme and machine-derived key
- * (EMAIL_MCP_KEY, else the stable machine id, else the legacy hostname seed)
- * that protects credentials.enc. Shared so every secret file email-mcp writes
- * (credentials.enc, the Outlook MSAL token cache) uses one implementation.
- */
+/** Shared encryption for credentials and MSAL cache. Name retained for compatibility. */
 export function encryptWithMachineKey(plaintext: string): string {
-  return encrypt(plaintext, getSeedCandidates()[0]);
+  return encrypt(plaintext, `email-mcp:env:${requireEncryptionKey()}`);
 }
 
 /**
@@ -164,6 +156,22 @@ export function decryptWithMachineKey(ciphertext: string): {
   return { plaintext, usedLegacyKey: seedUsed !== seeds[0] };
 }
 
+/** Atomic replacement avoids truncation and does not follow a destination symlink. */
+export function writePrivateFile(filePath: string, content: string | Uint8Array): void {
+  const temp = `${filePath}.${crypto.randomUUID()}.tmp`;
+  const fd = fs.openSync(temp, 'wx', 0o600);
+  try {
+    try {
+      fs.writeFileSync(fd, content);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(temp, filePath);
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
+}
+
 interface StoredData {
   accounts: Record<string, AccountCredentials>;
 }
@@ -171,14 +179,16 @@ interface StoredData {
 export class CredentialStore {
   private filePath: string;
 
+  /** Select the credential directory and create it with owner-only permissions when absent. */
   constructor(dir?: string) {
-    const baseDir = dir ?? path.join(os.homedir(), '.email-mcp');
+    const baseDir = dir ?? getDataDir();
     if (!fs.existsSync(baseDir)) {
       fs.mkdirSync(baseDir, { recursive: true, mode: 0o700 });
     }
     this.filePath = path.join(baseDir, 'credentials.enc');
   }
 
+  /** Decrypt stored accounts and migrate an accepted legacy key; return an empty store only when no file exists. */
   private read(): StoredData {
     if (!fs.existsSync(this.filePath)) {
       return { accounts: {} };
@@ -187,22 +197,15 @@ export class CredentialStore {
     const { plaintext, usedLegacyKey } = decryptWithMachineKey(raw);
     const data = JSON.parse(plaintext) as StoredData;
 
-    // Transparently re-encrypt with the preferred seed when an older/legacy
-    // seed was used, so future reads survive hostname changes (issue #4).
-    if (usedLegacyKey) {
-      try {
-        this.write(data);
-      } catch {
-        // Migration is best-effort; the read itself already succeeded.
-      }
-    }
+    if (usedLegacyKey) this.write(data);
     return data;
   }
 
+  /** Encrypt the complete account store with the independent secret and replace the file atomically. */
   private write(data: StoredData): void {
     const json = JSON.stringify(data);
     const encrypted = encryptWithMachineKey(json);
-    fs.writeFileSync(this.filePath, encrypted, { mode: 0o600 });
+    writePrivateFile(this.filePath, encrypted);
   }
 
   async save(creds: AccountCredentials): Promise<void> {

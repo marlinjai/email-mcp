@@ -77,11 +77,19 @@ describe('GmailAuth', () => {
       expect(second.state).not.toBe(first.state);
     });
 
-    it('defaults to the full scope set, including mail.google.com', () => {
+    it('defaults to read-only scopes', () => {
       auth.getAuthUrl('http://localhost:3000/callback');
-      expect(lastGeneratedScopes).toContain('https://mail.google.com/');
-      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.modify');
-      expect(lastGeneratedScopes).toContain('https://www.googleapis.com/auth/gmail.settings.basic');
+      expect(lastGeneratedScopes).toEqual(['https://www.googleapis.com/auth/gmail.readonly']);
+    });
+
+    it('allows read and send without modify, settings or permanent delete', () => {
+      auth.getAuthUrl('http://localhost:3000/callback', 'read-send');
+      expect(lastGeneratedScopes).toEqual(['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']);
+    });
+
+    it('rejects an unknown scope configuration', () => {
+      process.env.EMAIL_MCP_GMAIL_SCOPE = 'typo';
+      expect(() => auth.getAuthUrl('http://localhost:3000/callback')).toThrow('EMAIL_MCP_GMAIL_SCOPE');
     });
 
     it('drops mail.google.com when scopeMode is "restricted"', () => {

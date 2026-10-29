@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OutlookAuth } from '../../src/providers/outlook/auth.js';
 
 // Mock @azure/msal-node
@@ -32,6 +32,8 @@ describe('OutlookAuth', () => {
     auth = new OutlookAuth('test-client-id');
   });
 
+  afterEach(() => vi.unstubAllEnvs());
+
   describe('getAuthUrl', () => {
     it('generates Microsoft auth URL with correct parameters', async () => {
       mockGetAuthCodeUrl.mockResolvedValue(
@@ -46,7 +48,7 @@ describe('OutlookAuth', () => {
 
       expect(mockGetAuthCodeUrl).toHaveBeenCalledWith(
         expect.objectContaining({
-          scopes: ['Mail.ReadWrite', 'Mail.Send', 'MailboxSettings.ReadWrite', 'offline_access'],
+          scopes: ['Mail.Read', 'offline_access'],
           redirectUri: 'http://localhost:3000/callback',
           codeChallenge: 'test-challenge-67890',
           codeChallengeMethod: 'S256',
@@ -85,7 +87,7 @@ describe('OutlookAuth', () => {
         expect.objectContaining({
           code: 'auth-code-789',
           codeVerifier: 'test-verifier-12345',
-          scopes: ['Mail.ReadWrite', 'Mail.Send', 'MailboxSettings.ReadWrite', 'offline_access'],
+          scopes: ['Mail.Read', 'offline_access'],
           redirectUri: 'http://localhost:3000/callback',
         })
       );
@@ -107,7 +109,7 @@ describe('OutlookAuth', () => {
       expect(mockAcquireTokenByRefreshToken).toHaveBeenCalledWith(
         expect.objectContaining({
           refreshToken: 'refresh-token-abc',
-          scopes: ['Mail.ReadWrite', 'Mail.Send', 'MailboxSettings.ReadWrite', 'offline_access'],
+          scopes: ['Mail.Read', 'offline_access'],
         })
       );
     });
@@ -123,15 +125,19 @@ describe('OutlookAuth', () => {
 
   describe('scopes', () => {
     it('uses the correct Microsoft Graph scopes', () => {
-      // MailboxSettings.ReadWrite is required for the messageRules API
-      // (block rules) — see docs/plans/2026-08-27-spam-report-and-block-rules.md.
-      expect(OutlookAuth.SCOPES).toEqual([
-        'Mail.ReadWrite',
-        'Mail.Send',
-        'MailboxSettings.ReadWrite',
-        'offline_access',
-      ]);
+      expect(OutlookAuth.SCOPES).toEqual(['Mail.Read', 'offline_access']);
     });
+  });
+
+  it('supports explicit read-send and full scopes, and rejects unknown modes', () => {
+    vi.stubEnv('EMAIL_MCP_OUTLOOK_SCOPE', 'read-send');
+    expect(OutlookAuth.SCOPES).toEqual(['Mail.Read', 'Mail.Send', 'offline_access']);
+    vi.stubEnv('EMAIL_MCP_OUTLOOK_SCOPE', 'read-write');
+    expect(OutlookAuth.SCOPES).toEqual(['Mail.ReadWrite', 'Mail.Send', 'offline_access']);
+    vi.stubEnv('EMAIL_MCP_OUTLOOK_SCOPE', 'full');
+    expect(OutlookAuth.SCOPES).toEqual(['Mail.ReadWrite', 'Mail.Send', 'MailboxSettings.ReadWrite', 'offline_access']);
+    vi.stubEnv('EMAIL_MCP_OUTLOOK_SCOPE', 'typo');
+    expect(() => new OutlookAuth('test-client-id')).toThrow('EMAIL_MCP_OUTLOOK_SCOPE');
   });
 
   describe('authority', () => {

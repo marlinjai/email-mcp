@@ -3,9 +3,11 @@ import type { CodeChallengeMethod } from 'google-auth-library';
 import crypto from 'node:crypto';
 import type { OAuthTokens } from '../../models/types.js';
 
-export type GmailScopeMode = 'full' | 'restricted';
+export type GmailScopeMode = 'readonly' | 'read-send' | 'full' | 'restricted';
 
 const GMAIL_SCOPES: Record<GmailScopeMode, string[]> = {
+  readonly: ['https://www.googleapis.com/auth/gmail.readonly'],
+  'read-send': ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send'],
   full: [
     // Gmail's maximum-permission scope. Superset of gmail.modify below;
     // the only capability it adds is immediate, trash-bypassing permanent
@@ -29,11 +31,13 @@ const GMAIL_SCOPES: Record<GmailScopeMode, string[]> = {
   ],
 };
 
+/** Resolve explicit or environment Gmail permissions, defaulting to read-only and rejecting unknown modes. */
 function resolveScopeMode(explicit?: GmailScopeMode): GmailScopeMode {
-  if (explicit) return explicit;
-  return process.env.EMAIL_MCP_GMAIL_SCOPE?.toLowerCase() === 'restricted'
-    ? 'restricted'
-    : 'full';
+  const mode = explicit ?? process.env.EMAIL_MCP_GMAIL_SCOPE?.toLowerCase() ?? 'readonly';
+  if (mode !== 'readonly' && mode !== 'read-send' && mode !== 'restricted' && mode !== 'full') {
+    throw new Error('EMAIL_MCP_GMAIL_SCOPE must be readonly, read-send, restricted, or full');
+  }
+  return mode;
 }
 
 export const GOOGLE_REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';

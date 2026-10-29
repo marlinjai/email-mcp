@@ -11,70 +11,100 @@ A unified MCP server for email access across Gmail, Outlook, iCloud, and generic
 - **Full email client** -- Search, read, send, reply, forward, organize, and manage drafts
 - **Batch operations** -- Delete, move, or mark hundreds of emails in a single call
 - **Lightweight search** -- Compact search results by default (~20KB vs ~1.4MB) with optional full body retrieval
-- **Encrypted credential storage** -- AES-256-GCM encryption at rest with machine-derived keys
+- **Encrypted credential storage** -- AES-256-GCM encryption at rest with a required independent secret
 - **Provider-native APIs** -- Uses Gmail API and Microsoft Graph where available for richer features, falls back to IMAP for universal compatibility
 
 ## Installation
 
-Install globally from npm:
+This checkout includes local security changes that are not published to npm. Build and run this checkout to use them; `npx @marlinjai/email-mcp` runs the upstream package instead.
 
 ```bash
-npm install -g @marlinjai/email-mcp
-```
-
-Or run directly with npx (no install needed):
-
-```bash
-npx @marlinjai/email-mcp
+npm ci --ignore-scripts
+npm run build
 ```
 
 ## Quick Start
 
-1. Run the interactive setup wizard to add your email accounts:
-
-```bash
-npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
-```
-
-> **The `-p`/`--package` flag is required.** This package declares two binaries (`email-mcp` for the MCP server, `email-mcp-setup` for this wizard). Without `-p`, npx runs the bin matching the *package's own name* (`email-mcp`, the server) and silently passes `email-mcp-setup` to it as an ignored argument — the server then sits waiting for MCP protocol input on stdin forever, producing no output at all. It looks exactly like a hang. `-p` tells npx explicitly which package to resolve and which of its binaries to actually run.
-
-The wizard will walk you through provider selection and authentication. After each account, it asks if you'd like to add another — so you can set up Gmail, Outlook, and iCloud all in one go.
-
-2. Add the server to your MCP configuration (`.mcp.json`):
+1. Generate a random key once (for example, `openssl rand -hex 32`), store it in your password manager, and supply the same `EMAIL_MCP_KEY` to setup and the MCP process through a trusted environment or secret manager. Do not regenerate it on every startup or commit it to a config file. A missing or shorter-than-32-character key is rejected.
+2. Run `node dist/setup/wizard.js` to authorize an account. Gmail and Outlook default to read-only permissions.
+3. Configure your MCP host to launch the local build, inheriting the key:
 
 ```json
 {
   "mcpServers": {
     "email": {
-      "command": "npx",
-      "args": ["@marlinjai/email-mcp"]
+      "command": "node",
+      "args": ["/absolute/path/to/email-mcp/dist/index.js"],
+      "env": {
+        "EMAIL_MCP_ACCOUNT_IDS": "<account-id-from-setup>"
+      }
     }
   }
 }
 ```
 
-3. Start using email tools in Claude Code — search your inbox, send emails, organize messages, and more.
+If your desktop host does not inherit shell environment variables, inject the key using its private secret configuration. The default tool set is read-only. Explicitly enabling send/reply and migrating existing accounts are covered in [SECURITY.md](SECURITY.md).
+
+## HTTP MCP
+
+Keep the same `EMAIL_MCP_KEY`, data directory, account allowlist and tool allowlist used by stdio. Supply a **separate** random `EMAIL_MCP_HTTP_TOKEN` (32–256 URL-safe characters) through your private environment/secret manager, then start:
+
+```bash
+node dist/index.js --transport http
+```
+
+The endpoint is `http://127.0.0.1:3000/mcp`. You can also set `EMAIL_MCP_TRANSPORT=http`; `--transport stdio` explicitly selects the original transport. HTTP startup never opens the setup wizard; authorize accounts locally beforehand.
+
+Configure a client that supports Streamable HTTP and custom headers:
+
+```json
+{
+  "mcpServers": {
+    "email": {
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer <HTTP_TOKEN_FROM_YOUR_PRIVATE_SECRET_STORE>"
+      }
+    }
+  }
+}
+```
+
+The header value above is a placeholder; keep the actual token out of tracked files. This is static Bearer authentication, not an OAuth login/discovery endpoint. The HTTP token grants the same process-wide mailbox permissions to every client that holds it.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `EMAIL_MCP_HTTP_TOKEN` | Required | HTTP access secret, distinct from the encryption key |
+| `EMAIL_MCP_HTTP_HOST` | `127.0.0.1` | Listening IP or `localhost` |
+| `EMAIL_MCP_HTTP_PORT` | `3000` | Listening port (`0` selects a free port) |
+| `EMAIL_MCP_HTTP_ALLOWED_HOSTS` | Loopback names with the listening port | Exact comma-separated Host headers, including ports when present |
+
+For remote access, keep the listener private behind an HTTPS reverse proxy or encrypted tunnel. If the proxy preserves a public Host header, configure it explicitly, for example `EMAIL_MCP_HTTP_ALLOWED_HOSTS=mail.example.com`. Binding to a non-loopback address also requires an explicit host allowlist; this option does not enable TLS. Forward `Authorization` and the MCP headers, and disable caching. Do not expose unencrypted HTTP to an untrusted network.
+
+This uses [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) with stateless JSON responses. Each request gets its own transport and account connections. GET/DELETE return 405; legacy `/sse`, resumable streams and browser/CORS clients are not supported. Requests with an Origin header are rejected. Request bodies are limited to 1 MiB and there are at most 16 in-flight requests; use path-based attachments or stdio for larger inputs. SIGINT/SIGTERM drain requests for up to 10 seconds. A disconnected or interrupted send may already have reached the provider: check Sent before retrying.
 
 ## Provider Setup Guides
 
 ### Gmail
 
-No configuration needed — the setup wizard handles everything using built-in OAuth credentials (PKCE):
+After configuring the encryption key, the setup wizard uses the built-in OAuth client (PKCE):
 
 ```bash
-npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
+node dist/setup/wizard.js
 # Select "Gmail" when prompted
-# Choose "Full" or "Restricted" permission scope when asked
+# Choose "Read only" (default), or explicitly authorize additional capabilities
 # A browser window opens for Google authorization
 # Grant the requested permissions and return to the terminal
 ```
 
 The wizard asks which Gmail permission scope to authorize:
 
-- **Full** (default) — everything below, plus immediate, Trash-bypassing permanent deletion (`https://mail.google.com/`, Gmail's maximum-permission scope).
+- **Read only** (default) — mailbox reads (`gmail.readonly`).
+- **Read and send** — reads plus sending (`gmail.readonly` + `gmail.send`), without message modification or settings access.
+- **Full** — everything below, plus immediate, Trash-bypassing permanent deletion (`https://mail.google.com/`, Gmail's maximum-permission scope).
 - **Restricted** — read, send, label, archive, and move-to-trash (`gmail.modify` + `gmail.settings.basic`), but no permanent deletion. Every tool in this server works identically under Restricted except an explicit `permanent: true` delete, which fails with a Gmail API error instead of succeeding.
 
-Pass `--scope full` or `--scope restricted` to skip the prompt, or set `EMAIL_MCP_GMAIL_SCOPE=restricted` in the environment the wizard runs in.
+Pass `--scope readonly|read-send|restricted|full` to skip the prompt, or set `EMAIL_MCP_GMAIL_SCOPE` in the setup environment. An unknown mode is rejected.
 
 > **Verification status (1 October 2026):** Google's review of the shared OAuth app is still running, so Google currently only lets accounts on its test-user list sign in through it; everyone else sees the "has not completed the Google verification process" screen and needs their own OAuth app (next note). The last open step for the shared app is a yearly independent security assessment (CASA, Cloud Application Security Assessment) that Google has requested. Because email-mcp has no server of its own, its applicability is being clarified with Google. Details and current status: [email.lumitra.co/privacy#google-verification](https://email.lumitra.co/privacy#google-verification), tracked in [issue #1](https://github.com/marlinjai/email-mcp/issues/1).
 
@@ -82,10 +112,12 @@ Pass `--scope full` or `--scope restricted` to skip the prompt, or set `EMAIL_MC
 
 ### Outlook
 
-No configuration needed — the setup wizard handles everything using built-in OAuth credentials (PKCE):
+`EMAIL_MCP_OUTLOOK_SCOPE` accepts `readonly` (default: `Mail.Read`), `read-send` (`Mail.Read` + `Mail.Send`, new messages only), `read-write` (`Mail.ReadWrite` + `Mail.Send`, needed for the current reply/draft flow), or `full` (`Mail.ReadWrite` + `Mail.Send` + `MailboxSettings.ReadWrite`). All modes request `offline_access`. Use the same setting for setup and the MCP process.
+
+After configuring the encryption key, the setup wizard uses the built-in OAuth client (PKCE):
 
 ```bash
-npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
+node dist/setup/wizard.js
 # Select "Outlook" when prompted
 # A browser window opens for Microsoft authorization
 # Sign in and grant the requested permissions
@@ -100,7 +132,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 3. Run the setup wizard:
 
 ```bash
-npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
+node dist/setup/wizard.js
 # Select "iCloud" when prompted
 # Enter your iCloud email address
 # Enter the app-specific password you generated
@@ -111,7 +143,7 @@ npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
 Run the setup wizard with your IMAP/SMTP server details:
 
 ```bash
-npx -y -p @marlinjai/email-mcp@latest email-mcp-setup
+node dist/setup/wizard.js
 # Select "Other IMAP" when prompted
 # Enter your IMAP host, port, and credentials
 # Optionally enter SMTP host and port for sending
@@ -288,37 +320,11 @@ pnpm test:integration
 
 ## Credential Storage
 
-Account credentials are encrypted at rest with AES-256-GCM in `~/.email-mcp/credentials.enc`.
+Credentials and the Outlook MSAL cache are encrypted with AES-256-GCM using the required `EMAIL_MCP_KEY`. Machine identifiers are accepted only during an explicitly enabled one-time legacy migration. The data directory defaults to `~/.email-mcp`; set `EMAIL_MCP_DATA_DIR` to keep deployments separate.
 
-By default the encryption key is derived from a stable, machine-specific identifier
-(the hardware UUID on macOS, `/etc/machine-id` on Linux, or the `MachineGuid` on
-Windows), falling back to the hostname when none is available.
+Outlook cache transactions are locked across server and setup processes. After a crash, a lock timeout may require stopping every process sharing the cache and removing the empty `msal-cache.enc.lock` directory. Conflicting encrypted/plaintext caches stop migration and preserve both files. See [SECURITY.md](SECURITY.md) for recovery instructions.
 
-Set the `EMAIL_MCP_KEY` environment variable to supply your own passphrase instead.
-This is recommended when the machine identifier may change (for example in
-containers or CI), or when you want to move `credentials.enc` between machines:
-
-```bash
-export EMAIL_MCP_KEY="your-strong-passphrase"
-```
-
-When `EMAIL_MCP_KEY` is set, existing credential files are transparently
-re-encrypted with the passphrase the next time they are read.
-
-The Outlook refresh token lives in the token cache of Microsoft's authentication
-library (MSAL), `~/.email-mcp/msal-cache.enc`, encrypted with the same scheme and key
-derivation as `credentials.enc`, so `EMAIL_MCP_KEY` protects both files. Versions before 1.8.0
-kept this cache as plain JSON in `~/.email-mcp/msal-cache.json`; 1.8.0 encrypts it and
-deletes the plain file the first time it reads it, without signing you out. Going back
-to an older version afterwards means signing in to Outlook again.
-
-On macOS and Linux, attachments saved with `email_save_attachment` are written
-owner-only (`0600`), and folders email-mcp creates for them are `0700`. They are not
-encrypted.
-
-The OAuth sign-in callback started by `email-mcp-setup` listens on the loopback
-addresses only (`127.0.0.1`, and `::1` when available), so nothing else on your network
-can reach it.
+See [SECURITY.md](SECURITY.md) for migration, tool and account allowlists, OAuth scopes, and the trust boundary. Existing grants are not automatically narrowed by this upgrade.
 
 ## Support
 

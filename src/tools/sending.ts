@@ -1,3 +1,4 @@
+import { isToolEnabled } from './policy.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
@@ -64,9 +65,10 @@ function withoutDuplicates(to: Contact[], cc: Contact[] | undefined): { to: Cont
   return { to: to.filter(firstMention), cc: cc?.filter(firstMention) };
 }
 
+/** Register enabled send and draft tools with recipient, attachment, and reply-thread validation. */
 export function registerSendingTools(server: McpServer, accountManager: AccountManager): void {
   // --- email_send ---
-  server.tool(
+  if (isToolEnabled('email_send')) server.tool(
     'email_send',
     'Send a new email',
     {
@@ -101,7 +103,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_reply ---
-  server.tool(
+  if (isToolEnabled('email_reply')) server.tool(
     'email_reply',
     'Reply to an existing email, in its thread. With replyAll the reply goes to the original sender and all To and Cc recipients, except the account\'s own address',
     {
@@ -183,7 +185,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_forward ---
-  server.tool(
+  if (isToolEnabled('email_forward')) server.tool(
     'email_forward',
     'Forward an email to new recipients. The original message\'s attachments are left out unless includeOriginalAttachments is true',
     {
@@ -295,7 +297,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_draft_create ---
-  server.tool(
+  if (isToolEnabled('email_draft_create')) server.tool(
     'email_draft_create',
     'Create a new email draft. Pass inReplyToEmailId to save it as a reply in that message\'s thread',
     {
@@ -338,7 +340,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_draft_update ---
-  server.tool(
+  if (isToolEnabled('email_draft_update')) server.tool(
     'email_draft_update',
     'Update an existing email draft in place (to/subject/body). A reply draft stays in its thread. On Gmail and Outlook the draft id is unchanged. On iCloud/generic IMAP there is no in-place update (the old draft is deleted and a new one appended), so the returned id is a NEW id and the old one no longer resolves; always use the id this call returns, not the one you passed in.',
     {
@@ -375,7 +377,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_draft_list ---
-  server.tool(
+  if (isToolEnabled('email_draft_list')) server.tool(
     'email_draft_list',
     'List email drafts',
     {

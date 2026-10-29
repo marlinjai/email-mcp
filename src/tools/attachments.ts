@@ -1,3 +1,4 @@
+import { getDataDir } from '../config.js';
 import { z } from 'zod';
 import type { Stats } from 'node:fs';
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
@@ -215,7 +216,7 @@ function plan(input: AttachmentInput, env: NodeJS.ProcessEnv, dataDir: string): 
 export function resolveAttachments(
   inputs: AttachmentInput[] | undefined,
   env: NodeJS.ProcessEnv = process.env,
-  dataDir: string = path.join(os.homedir(), '.email-mcp'),
+  dataDir: string = getDataDir(),
 ): Attachment[] | undefined {
   if (inputs === undefined) return undefined;
   const planned = inputs.map((input) => plan(input, env, dataDir));

@@ -1,3 +1,4 @@
+import { isToolEnabled } from './policy.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
@@ -7,9 +8,10 @@ function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
 }
 
+/** Register enabled mailbox organization tools, keeping all mutation capabilities opt-in by default. */
 export function registerOrganizingTools(server: McpServer, accountManager: AccountManager): void {
   // --- email_move ---
-  server.tool(
+  if (isToolEnabled('email_move')) server.tool(
     'email_move',
     'Move an email to a different folder',
     {
@@ -30,7 +32,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_delete ---
-  server.tool(
+  if (isToolEnabled('email_delete')) server.tool(
     'email_delete',
     'Delete an email (moves to trash by default, or permanently deletes)',
     {
@@ -51,7 +53,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_mark ---
-  server.tool(
+  if (isToolEnabled('email_mark')) server.tool(
     'email_mark',
     'Mark an email as read/unread, starred, or flagged',
     {
@@ -78,7 +80,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_batch_delete ---
-  server.tool(
+  if (isToolEnabled('email_batch_delete')) server.tool(
     'email_batch_delete',
     'Delete multiple emails at once. Much faster than individual deletes.',
     {
@@ -114,7 +116,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_batch_move ---
-  server.tool(
+  if (isToolEnabled('email_batch_move')) server.tool(
     'email_batch_move',
     'Move multiple emails to a folder at once. Much faster than individual moves.',
     {
@@ -150,7 +152,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_batch_mark ---
-  server.tool(
+  if (isToolEnabled('email_batch_mark')) server.tool(
     'email_batch_mark',
     'Mark multiple emails at once (read/unread, starred, flagged). Much faster than individual marks.',
     {
@@ -192,7 +194,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_batch_label ---
-  server.tool(
+  if (isToolEnabled('email_batch_label')) server.tool(
     'email_batch_label',
     'Add or remove labels on multiple emails at once (Gmail only). Much faster than individual email_label calls.',
     {
@@ -237,7 +239,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_transfer (cross-account) ---
-  server.tool(
+  if (isToolEnabled('email_transfer')) server.tool(
     'email_transfer',
     'Move or copy emails BETWEEN accounts, preserving the original message intact (sender, date, threading) by transferring the raw MIME. Fetches each message from the source account and imports it into the target account. With deleteAfter=true the source copy is sent to trash only after a confirmed import, making this a safe cross-account move.',
     {
@@ -305,7 +307,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_label ---
-  server.tool(
+  if (isToolEnabled('email_label')) server.tool(
     'email_label',
     'Add or remove labels on an email (Gmail only)',
     {
@@ -342,7 +344,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_folder_create ---
-  server.tool(
+  if (isToolEnabled('email_folder_create')) server.tool(
     'email_folder_create',
     'Create a new email folder',
     {
@@ -362,7 +364,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_get_labels ---
-  server.tool(
+  if (isToolEnabled('email_get_labels')) server.tool(
     'email_get_labels',
     'List all labels for an email account (Gmail only)',
     {
@@ -389,7 +391,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_get_categories ---
-  server.tool(
+  if (isToolEnabled('email_get_categories')) server.tool(
     'email_get_categories',
     'List all categories for an email account (Outlook only)',
     {

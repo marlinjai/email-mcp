@@ -1,5 +1,6 @@
-import fs from 'node:fs';
-import os from 'node:os';
+import { isToolEnabled } from './policy.js';
+import { getDataDir } from '../config.js';
+import { saveDownload } from './downloads.js';
 import path from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -10,16 +11,12 @@ function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
-// email_save_attachment writes to disk on the host running this MCP server.
-// The output path comes from the tool caller (an LLM), which may be acting on
-// untrusted content (a prompt-injected email body, a manipulated instruction).
-// Restricting writes to one base directory and rejecting any path that
-// resolves outside it turns "arbitrary file write anywhere on the host" into
-// "write anywhere under this one directory" — the downloads dir is still
-// yours to manage, but a malicious outputPath can't reach ~/.ssh or /etc.
+// Tool-supplied paths are untrusted. The lexical check rejects traversal;
+// saveDownload checks filesystem links after fetching the attachment.
+/** Resolve the configured downloads directory or the downloads subdirectory of the private data directory. */
 function getDownloadsBaseDir(): string {
   return path.resolve(
-    process.env.EMAIL_MCP_DOWNLOADS_DIR || path.join(os.homedir(), '.email-mcp', 'downloads'),
+    process.env.EMAIL_MCP_DOWNLOADS_DIR || path.join(getDataDir(), 'downloads'),
   );
 }
 
@@ -42,9 +39,10 @@ function stripBodies(emails: Email[]): Email[] {
   }));
 }
 
+/** Register enabled read tools and the opt-in attachment saver with account checks and bounded download paths. */
 export function registerReadingTools(server: McpServer, accountManager: AccountManager): void {
   // --- email_list_folders ---
-  server.tool(
+  if (isToolEnabled('email_list_folders')) server.tool(
     'email_list_folders',
     'List all email folders for an account',
     {
@@ -62,7 +60,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_search ---
-  server.tool(
+  if (isToolEnabled('email_search')) server.tool(
     'email_search',
     'Search emails with filters. By default returns compact results without full body content to save context. Set returnBody=true to include full email bodies.',
     {
@@ -115,7 +113,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_get ---
-  server.tool(
+  if (isToolEnabled('email_get')) server.tool(
     'email_get',
     'Get a single email by ID',
     {
@@ -135,7 +133,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_get_thread ---
-  server.tool(
+  if (isToolEnabled('email_get_thread')) server.tool(
     'email_get_thread',
     'Get an email thread by thread ID',
     {
@@ -155,7 +153,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_get_attachment ---
-  server.tool(
+  if (isToolEnabled('email_get_attachment')) server.tool(
     'email_get_attachment',
     'Get an email attachment by ID, returns base64 encoded data',
     {
@@ -179,7 +177,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_save_attachment ---
-  server.tool(
+  if (isToolEnabled('email_save_attachment')) server.tool(
     'email_save_attachment',
     `Download an email attachment and save it directly to disk, returning metadata only (no base64 in the response) — avoids paying the token cost of round-tripping large attachments through the calling model. outputPath is relative to a fixed downloads directory (${getDownloadsBaseDir()}, override with EMAIL_MCP_DOWNLOADS_DIR) and cannot escape it.`,
     {
@@ -195,15 +193,7 @@ export function registerReadingTools(server: McpServer, accountManager: AccountM
         const provider = await accountManager.getProvider(args.accountId);
         const { data, meta } = await provider.getAttachment(args.emailId, args.attachmentId, args.sourceFolder);
 
-        // Attachments are private mail content: directories email-mcp creates
-        // are owner-only (0700), and the file is owner-only (0600) like the
-        // credential files. chmod after writing because the mode option only
-        // applies when a file is created, not when an existing one is replaced.
-        // An existing directory (e.g. a user-chosen EMAIL_MCP_DOWNLOADS_DIR)
-        // keeps the permissions its owner gave it.
-        fs.mkdirSync(path.dirname(absPath), { recursive: true, mode: 0o700 });
-        fs.writeFileSync(absPath, Buffer.from(data), { mode: 0o600 });
-        fs.chmodSync(absPath, 0o600);
+        saveDownload(getDownloadsBaseDir(), absPath, Buffer.from(data));
 
         return jsonResult({
           path: absPath,

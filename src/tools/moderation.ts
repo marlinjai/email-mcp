@@ -1,3 +1,4 @@
+import { isToolEnabled } from './policy.js';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
@@ -10,9 +11,10 @@ function jsonResult(data: unknown) {
 const BLOCK_RULE_MATCH_TYPES = ['senderDomain', 'senderAddress', 'subjectContains', 'headerContains'] as const;
 const BLOCK_RULE_ACTIONS = ['delete', 'moveToJunk'] as const;
 
+/** Register enabled spam and block-rule tools with provider capability and argument validation. */
 export function registerModerationTools(server: McpServer, accountManager: AccountManager): void {
   // --- email_report_spam ---
-  server.tool(
+  if (isToolEnabled('email_report_spam')) server.tool(
     'email_report_spam',
     'Report an email as spam/junk, training the provider\'s own spam filter (the same signal the "Report Junk" button sends in Gmail/Outlook). This is different from email_delete, which removes the message but teaches the filter nothing. Not an abuse report to the provider\'s security team — it only trains this account\'s filter.',
     {
@@ -35,7 +37,7 @@ export function registerModerationTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_batch_report_spam ---
-  server.tool(
+  if (isToolEnabled('email_batch_report_spam')) server.tool(
     'email_batch_report_spam',
     'Report multiple emails as spam/junk at once. Much faster than individual calls.',
     {
@@ -67,7 +69,7 @@ export function registerModerationTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_create_block_rule ---
-  server.tool(
+  if (isToolEnabled('email_create_block_rule')) server.tool(
     'email_create_block_rule',
     'Create a standing rule that intercepts future mail matching a pattern, before it reaches the inbox. Use headerContains (e.g. matching a Reply-To domain) to block a spam template family whose visible "From" domain rotates — matching the rotating domain directly stops working within days. Not supported on iCloud/generic IMAP (no standard server-side rule mechanism exists across IMAP servers). Outlook requires the MailboxSettings.ReadWrite scope — accounts authenticated before this tool existed need to re-run the setup wizard once to re-consent.',
     {
@@ -103,7 +105,7 @@ export function registerModerationTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_list_block_rules ---
-  server.tool(
+  if (isToolEnabled('email_list_block_rules')) server.tool(
     'email_list_block_rules',
     'List the standing block rules on an account, for auditing or before deleting one.',
     {
@@ -128,7 +130,7 @@ export function registerModerationTools(server: McpServer, accountManager: Accou
   );
 
   // --- email_delete_block_rule ---
-  server.tool(
+  if (isToolEnabled('email_delete_block_rule')) server.tool(
     'email_delete_block_rule',
     'Delete a standing block rule — use this to undo a rule that turned out to be too broad (e.g. it blocked a domain a real correspondent also uses).',
     {

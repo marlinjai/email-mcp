@@ -436,6 +436,54 @@ describe('Reading tools', () => {
       expect(fs.statSync(tmpDir).mode & 0o777).toBe(0o755);
     });
 
+    it.skipIf(process.platform === 'win32').each(['parent', 'final', 'dangling', 'hardlink', 'base'])(
+      'rejects a %s link without modifying any outside file', async (kind) => {
+        const outside = path.join(tmpDir, 'outside');
+        const base = path.join(tmpDir, 'downloads');
+        fs.mkdirSync(outside);
+        fs.mkdirSync(base);
+        const target = path.join(outside, 'victim.txt');
+        fs.writeFileSync(target, 'unchanged');
+        vi.stubEnv('EMAIL_MCP_DOWNLOADS_DIR', base);
+        let outputPath = 'victim.txt';
+        if (kind === 'parent') {
+          fs.symlinkSync(outside, path.join(base, 'link'));
+          outputPath = 'link/victim.txt';
+        } else if (kind === 'base') {
+          fs.rmdirSync(base);
+          fs.symlinkSync(outside, base);
+        } else if (kind === 'hardlink') {
+          fs.linkSync(target, path.join(base, outputPath));
+        } else {
+          fs.symlinkSync(kind === 'dangling' ? path.join(outside, 'missing.txt') : target, path.join(base, outputPath));
+        }
+        const result = await callTool(server, 'email_save_attachment', { accountId: 'acct-1', emailId: 'msg-1', attachmentId: 'att-1', outputPath });
+        expect(JSON.parse(result.content[0].text).error).toBeDefined();
+        expect(fs.readFileSync(target, 'utf-8')).toBe('unchanged');
+        expect(fs.existsSync(path.join(outside, 'missing.txt'))).toBe(false);
+      },
+    );
+
+    it.skipIf(process.platform === 'win32')('rechecks directories after asynchronous attachment retrieval', async () => {
+      const outside = path.join(tmpDir, 'outside');
+      const base = path.join(tmpDir, 'downloads');
+      fs.mkdirSync(outside);
+      fs.mkdirSync(base);
+      fs.mkdirSync(path.join(base, 'nested'));
+      const target = path.join(outside, 'victim.txt');
+      fs.writeFileSync(target, 'unchanged');
+      vi.stubEnv('EMAIL_MCP_DOWNLOADS_DIR', base);
+      const original = await mockProvider.getAttachment('msg-1', 'att-1');
+      vi.mocked(mockProvider.getAttachment).mockImplementation(async () => {
+        fs.rmdirSync(path.join(base, 'nested'));
+        fs.symlinkSync(outside, path.join(base, 'nested'));
+        return original;
+      });
+      const result = await callTool(server, 'email_save_attachment', { accountId: 'acct-1', emailId: 'msg-1', attachmentId: 'att-1', outputPath: 'nested/victim.txt' });
+      expect(JSON.parse(result.content[0].text).error).toBeDefined();
+      expect(fs.readFileSync(target, 'utf-8')).toBe('unchanged');
+    });
+
     it('rejects an outputPath that escapes the downloads directory via traversal', async () => {
       const result = await callTool(server, 'email_save_attachment', {
         accountId: 'acct-1',

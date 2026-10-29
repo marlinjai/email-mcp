@@ -1,3 +1,4 @@
+import { isToolEnabled } from './policy.js';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -16,9 +17,10 @@ const ICLOUD_DEFAULTS = {
   smtpPort: 587,
 };
 
+/** Register only enabled account tools; AccountManager enforces account access for their operations. */
 export function registerAccountTools(server: McpServer, accountManager: AccountManager): void {
   // --- email_list_accounts ---
-  server.tool(
+  if (isToolEnabled('email_list_accounts')) server.tool(
     'email_list_accounts',
     'List all configured email accounts and their connection status',
     {},
@@ -33,7 +35,7 @@ export function registerAccountTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_add_account ---
-  server.tool(
+  if (isToolEnabled('email_add_account')) server.tool(
     'email_add_account',
     'Add a new IMAP or iCloud email account (Gmail and Outlook require the setup wizard for OAuth)',
     {
@@ -93,7 +95,7 @@ export function registerAccountTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_remove_account ---
-  server.tool(
+  if (isToolEnabled('email_remove_account')) server.tool(
     'email_remove_account',
     'Remove an email account: deletes its stored credentials, revokes the Google grant for Gmail accounts, and removes Outlook tokens from the local token cache. The result reports whether provider-side revocation succeeded.',
     {
@@ -110,7 +112,7 @@ export function registerAccountTools(server: McpServer, accountManager: AccountM
   );
 
   // --- email_test_account ---
-  server.tool(
+  if (isToolEnabled('email_test_account')) server.tool(
     'email_test_account',
     'Test an email account connection',
     {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CredentialStore } from '../../src/auth/credential-store.js';
 import { ProviderType } from '../../src/models/types.js';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -173,9 +174,11 @@ describe('CredentialStore', () => {
     beforeEach(() => {
       savedEnvKey = process.env.EMAIL_MCP_KEY;
       delete process.env.EMAIL_MCP_KEY;
+      delete process.env.EMAIL_MCP_MIGRATE_LEGACY;
     });
 
     afterEach(() => {
+      delete process.env.EMAIL_MCP_MIGRATE_LEGACY;
       if (savedEnvKey === undefined) {
         delete process.env.EMAIL_MCP_KEY;
       } else {
@@ -191,8 +194,15 @@ describe('CredentialStore', () => {
       oauth: { access_token: 'a', refresh_token: 'r', expiry: '' },
     });
 
-    it('encrypts and decrypts using EMAIL_MCP_KEY when provided', async () => {
-      process.env.EMAIL_MCP_KEY = 'a-portable-passphrase';
+    it('refuses missing or short keys without writing credentials', async () => {
+      await expect(store.save(sampleCreds('missing'))).rejects.toThrow('EMAIL_MCP_KEY');
+      process.env.EMAIL_MCP_KEY = 'short';
+      await expect(store.save(sampleCreds('short'))).rejects.toThrow('EMAIL_MCP_KEY');
+      expect(fs.existsSync(path.join(testDir, 'credentials.enc'))).toBe(false);
+    });
+
+    it('encrypts and decrypts using EMAIL_MCP_KEY when provided' , async () => {
+      process.env.EMAIL_MCP_KEY = 'a-portable-passphrase-test-only-32-characters-minimum';
       const s = new CredentialStore(testDir);
       await s.save(sampleCreds('env-1'));
 
@@ -202,18 +212,29 @@ describe('CredentialStore', () => {
     });
 
     it('migrates a legacy-seeded file to EMAIL_MCP_KEY on read', async () => {
-      // Written without an explicit key (machine/hostname-derived seed).
-      const legacyStore = new CredentialStore(testDir);
-      await legacyStore.save(sampleCreds('mig-1'));
+      // Reproduce the old hostname scheme without enabling weak new writes.
+      const salt = Buffer.alloc(32, 1);
+      const iv = Buffer.alloc(16, 2);
+      const key = crypto.pbkdf2Sync(`email-mcp:${os.hostname()}:${os.userInfo().username}`, salt, 100_000, 32, 'sha512');
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const data = Buffer.concat([cipher.update(JSON.stringify({ accounts: { 'mig-1': sampleCreds('mig-1') } })), cipher.final()]);
+      const file = path.join(testDir, 'credentials.enc');
+      const legacy = JSON.stringify({ salt: salt.toString('hex'), iv: iv.toString('hex'), authTag: cipher.getAuthTag().toString('hex'), data: data.toString('hex') });
+      fs.writeFileSync(file, legacy);
+      process.env.EMAIL_MCP_KEY = 'new-passphrase-test-only-32-characters-minimum';
+      await expect(new CredentialStore(testDir).list()).rejects.toThrow();
+      expect(fs.readFileSync(file, 'utf-8')).toBe(legacy);
+      process.env.EMAIL_MCP_MIGRATE_LEGACY = 'true';
 
       // Now an explicit key is configured: the existing file must still be
       // readable and should be transparently re-encrypted with the new key.
-      process.env.EMAIL_MCP_KEY = 'new-passphrase';
+      process.env.EMAIL_MCP_KEY = 'new-passphrase-test-only-32-characters-minimum';
       const upgraded = new CredentialStore(testDir);
       expect((await upgraded.get('mig-1'))?.email).toBe('mig-1@gmail.com');
 
       // After migration the on-disk file decrypts with the new key, even from a
       // fresh instance, confirming the rewrite happened.
+      delete process.env.EMAIL_MCP_MIGRATE_LEGACY;
       const afterMigration = new CredentialStore(testDir);
       expect((await afterMigration.get('mig-1'))?.email).toBe('mig-1@gmail.com');
 
@@ -224,13 +245,16 @@ describe('CredentialStore', () => {
     });
 
     it('fails to decrypt with the wrong EMAIL_MCP_KEY', async () => {
-      process.env.EMAIL_MCP_KEY = 'correct-key';
+      process.env.EMAIL_MCP_KEY = 'correct-key-test-only-32-characters-minimum';
       const s = new CredentialStore(testDir);
       await s.save(sampleCreds('wrong-1'));
 
-      process.env.EMAIL_MCP_KEY = 'a-different-key';
+      const original = fs.readFileSync(path.join(testDir, 'credentials.enc'), 'utf-8');
+      process.env.EMAIL_MCP_KEY = 'a-different-key-test-only-32-characters-minimum';
       const s2 = new CredentialStore(testDir);
       await expect(s2.get('wrong-1')).rejects.toThrow();
+      await expect(s2.save(sampleCreds('other'))).rejects.toThrow();
+      expect(fs.readFileSync(path.join(testDir, 'credentials.enc'), 'utf-8')).toBe(original);
     });
   });
 });

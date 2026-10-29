@@ -16,3 +16,11 @@ scrollcraft/
 
 # Generated on every site deploy by scripts/funding.mjs
 site/funding.json
+
+# Private runtime state (including legacy plaintext tokens)
+.env.*
+!.env.example
+msal-cache.enc
+msal-cache.enc.lock/
+msal-cache.json
+.email-mcp/

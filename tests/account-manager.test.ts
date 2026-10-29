@@ -113,7 +113,37 @@ describe('AccountManager', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('enforces the process account allowlist on listing, reads, writes, and cached providers', async () => {
+    await store.save(gmailCreds);
+    await store.save(icloudCreds);
+    vi.stubEnv('EMAIL_MCP_ACCOUNT_IDS', 'gmail-1');
+    const scoped = new AccountManager(store);
+    expect((await scoped.listAccounts()).map((a) => a.id)).toEqual(['gmail-1']);
+    await expect(scoped.getAccountEmail('icloud-1')).rejects.toThrow('Account access denied');
+    await expect(scoped.getProvider('icloud-1')).rejects.toThrow('Account access denied');
+    await expect(scoped.connectAccount('icloud-1')).rejects.toThrow('Account access denied');
+    await expect(scoped.removeAccount('icloud-1')).rejects.toThrow('Account access denied');
+    await expect(scoped.addAccount(icloudCreds)).rejects.toThrow('Account access denied');
+    expect((await scoped.testAccount('icloud-1')).success).toBe(false);
+    expect(await store.get('icloud-1')).toEqual(icloudCreds);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await scoped.getProvider('gmail-1');
+    vi.stubEnv('EMAIL_MCP_ACCOUNT_IDS', 'icloud-1');
+    // The boundary is captured when the manager is created, not supplied by a caller.
+    await expect(scoped.getProvider('icloud-1')).rejects.toThrow('Account access denied');
+    await scoped.disconnectAll();
+  });
+
+  it('an explicitly empty account allowlist grants no access', async () => {
+    await store.save(gmailCreds);
+    vi.stubEnv('EMAIL_MCP_ACCOUNT_IDS', ' , ');
+    const scoped = new AccountManager(store);
+    expect(await scoped.listAccounts()).toEqual([]);
+    await expect(scoped.getProvider('gmail-1')).rejects.toThrow('Account access denied');
   });
 
   it('lists accounts from credential store', async () => {
