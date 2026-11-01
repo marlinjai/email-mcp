@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The website says up front that Gmail is self-service for now.** A banner above the navigation and a section after the hero explain that Gmail needs your own Google Cloud project until the shared sign-in passes Google's paid security assessment, with the steps beside the donation box. The promise that the maintainer pays what is missing is gone: the campaign has no end date and runs until the goal is reached.
+
 ## [1.11.0] - 2026-10-29
 
 Signatures and a named sender. A minor release: a new `signature` input and result field on the five sending tools, nothing renamed or removed. Gmail mail now carries the account's signature by default (see "Changed").

@@ -22,8 +22,6 @@ export const CONFIG = {
   goalCents: 67500,
   // Donations before this date are not part of the campaign.
   campaignStart: '2026-10-01',
-  // The assessment has to start by then; the maintainer pays what is missing.
-  backstopDate: '2026-11-02',
   auditDue: '2026-12-29',
   // GitHub reports lifetime payments with no dates, so what was paid before the
   // campaign is subtracted from the GitHub total only (Buy Me a Coffee is
@@ -166,10 +164,9 @@ export function sumBmcMemberships(subscriptions, now, config = CONFIG) {
   return { cents, supporters: count };
 }
 
-/** Which of the three texts the bar shows. */
-export function phaseFor(collectedCents, now, config = CONFIG) {
-  if (collectedCents !== null && collectedCents >= config.goalCents) return 'reached';
-  return now.toISOString().slice(0, 10) >= config.backstopDate ? 'backstopped' : 'collecting';
+/** Which of the two texts the bar shows. */
+export function phaseFor(collectedCents, config = CONFIG) {
+  return collectedCents !== null && collectedCents >= config.goalCents ? 'reached' : 'collecting';
 }
 
 /**
@@ -190,9 +187,9 @@ export function buildState({ github, bmc, now, config = CONFIG }) {
     goalCents: config.goalCents,
     collectedCents,
     supporters,
-    phase: phaseFor(collectedCents, now, config),
+    phase: phaseFor(collectedCents, config),
     updatedAt: now.toISOString(),
-    period: { start: config.campaignStart, backstop: config.backstopDate, auditDue: config.auditDue },
+    period: { start: config.campaignStart, auditDue: config.auditDue },
     sources: { githubSponsors: github.status, buyMeACoffee: bmc.status },
   };
 }
@@ -203,8 +200,7 @@ function dollars(cents) {
 }
 
 const PHASE_NOTE = {
-  collecting: (s) => `Collecting until ${formatDate(s.period.backstop)}, the day the assessment has to start. Whatever is missing then, the maintainer pays.`,
-  backstopped: (s) => `The assessment had to start on ${formatDate(s.period.backstop)}, so the maintainer covers what is missing. Donations still count toward this year's fee and next year's renewal.`,
+  collecting: (s) => `The assessment starts once the goal is reached, and Google's deadline for it is ${formatDate(s.period.auditDue)}. No other funding stands behind it yet.`,
   reached: () => 'Goal reached, thank you. Anything above it goes toward next year\'s assessment.',
 };
 
@@ -213,8 +209,8 @@ export function renderBlock(state, config = CONFIG) {
   const goal = dollars(state.goalCents);
   const note = PHASE_NOTE[state.phase](state);
   const links = `<div class="cta-row">
-      <a class="cta ghost" href="${config.sponsorsUrl}">Sponsor on GitHub</a>
-      <a class="cta ghost" href="${config.bmcUrl}">Buy Me a Coffee</a>
+      <a class="cta" href="${config.sponsorsUrl}">Donate on GitHub</a>
+      <a class="cta ghost" href="${config.bmcUrl}">Donate on Buy Me a Coffee</a>
     </div>`;
   if (state.collectedCents === null) {
     return `<div class="fund" id="funding">

@@ -133,15 +133,14 @@ describe('buildState', () => {
 });
 
 describe('phaseFor', () => {
-  it('collects until the day the assessment has to start', () => {
-    expect(phaseFor(1000, new Date('2026-11-01T23:00:00Z'))).toBe('collecting');
-    expect(phaseFor(1000, new Date('2026-11-02T00:00:00Z'))).toBe('backstopped');
-    expect(phaseFor(null, after)).toBe('backstopped');
+  it('collects until the goal is reached, with no date that ends it', () => {
+    expect(phaseFor(1000)).toBe('collecting');
+    expect(phaseFor(null)).toBe('collecting');
   });
 
-  it('is reached at the goal, before or after that day', () => {
-    expect(phaseFor(67500, during)).toBe('reached');
-    expect(phaseFor(90000, after)).toBe('reached');
+  it('is reached at the goal', () => {
+    expect(phaseFor(67500)).toBe('reached');
+    expect(phaseFor(90000)).toBe('reached');
   });
 });
 
@@ -167,7 +166,7 @@ describe('renderBlock', () => {
     expect(html).toContain('135 of 675 US dollars');
     expect(html).toContain('max="67500" value="13500"');
     expect(html).toContain('1 supporter, 20 percent');
-    expect(html).toContain('Collecting until 2 November 2026');
+    expect(html).toContain('deadline for it is 29 December 2026');
     expect(html).toContain('Updated 15 October 2026');
   });
 
@@ -183,10 +182,10 @@ describe('renderBlock', () => {
     expect(html).toContain('Goal reached');
   });
 
-  it('says who covers the rest after the start day', () => {
+  it('promises nobody covers the rest, on any day', () => {
     const html = renderBlock(buildState({ github: ok(20000, 4), bmc: ok(0, 0), now: after }));
-    expect(html).toContain('the maintainer covers what is missing');
-    expect(html).not.toContain('Collecting until');
+    expect(html).toContain('No other funding stands behind it yet');
+    expect(html).not.toContain('maintainer');
   });
 
   it('says so when one platform is missing or the amount is the last known one', () => {

@@ -72,9 +72,12 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       covers the lab fee for open source projects. Waiting on Google's answer. Next step: if
       Google says it applies, or has not answered by 2026-11-02, start AL1 with TAC Security (it takes 2 to 6
       weeks, and a deadline extension is requested from the lab, not from Google). Funding, decided by
-      Marlin on 2026-10-01 and 2026-10-02: donations are collected toward the 675 US dollars
-      until 2026-11-02 (GitHub Sponsors and Buy Me a Coffee), Marlin pays what is missing on
-      that day as a Lumitra business expense, and the renewal is decided again in a year; no
+      Marlin on 2026-10-01 and 2026-10-02 and changed by him on 2026-11-01: donations are
+      collected toward the 675 US dollars (GitHub Sponsors and Buy Me a Coffee) with no end
+      date and nobody covers the rest, because the project is not funded yet; 0 collected
+      on 2026-11-01. The site says Gmail is self-service until then. The assessment takes 2
+      to 6 weeks and Google's deadline is 2026-12-29, so it has to start by mid-November to
+      make it. The renewal is decided again in a year; no
       paid tier, because gating the shared client needs a server this project does not have.
       The homepage shows a funding bar rendered by `scripts/funding.mjs` in the site deploy
       workflow (every deploy and daily). The bar is live and connected to both
