@@ -320,6 +320,10 @@ The OAuth sign-in callback started by `email-mcp-setup` listens on the loopback
 addresses only (`127.0.0.1`, and `::1` when available), so nothing else on your network
 can reach it.
 
+## Sending to a list?
+
+email-mcp handles your own inbox. To reach a whole list, [Lumitra Mail](https://mail.lumitra.co), from the same maker, does newsletters and product mail through your own sending provider, with a visual editor, one-click unsubscribe and contacts on servers in Germany. Free for up to 6,000 messages a month.
+
 ## Support
 
 email-mcp is free and has no paid tier. Its one fixed cost is the independent security assessment Google requires every year for the shared Gmail sign-in (CASA, Cloud Application Security Assessment): 675 US dollars a year. It is the last open step before Google lets everyone use the one-command Gmail setup. The project is not funded for it yet, so the assessment starts once donations reach that amount; until then Gmail needs your own Google Cloud project (see the note in the Gmail section). Progress is shown at [email.lumitra.co](https://email.lumitra.co/#fund-the-audit).
