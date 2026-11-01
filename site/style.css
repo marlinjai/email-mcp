@@ -188,6 +188,18 @@ h1 em {
 .grid p { color: var(--muted); font-size: 15px; }
 
 /* -------------------------------------------------------------------- oss */
+/* ---------------------------------------------------- the sibling product */
+.sibling { padding-top: 96px; }
+.sibling-panel {
+  padding: 40px; border: 1px solid var(--gold-edge); border-radius: var(--radius);
+  background: var(--panel);
+}
+.sibling .eyebrow { margin-bottom: 14px; }
+.sibling h2 { font-size: clamp(26px, 3.6vw, 36px); max-width: 780px; margin-bottom: 16px; }
+.sibling h2 a { color: var(--accent); }
+.sibling p:not(.eyebrow) { color: var(--muted); font-size: 16.5px; max-width: 680px; }
+.sibling .cta-row { justify-content: flex-start; margin-top: 24px; }
+
 .oss { padding-top: 96px; }
 .oss h2 { font-size: clamp(28px, 4vw, 40px); margin-bottom: 18px; }
 .oss p { color: var(--muted); font-size: 16.5px; max-width: 680px; margin-bottom: 14px; }
@@ -232,6 +244,7 @@ footer nav a:hover { color: var(--ink); }
 
 @media (max-width: 860px) {
   .claim, .grid, .gmail-paths { grid-template-columns: 1fr; gap: 20px; }
+  .sibling-panel { padding: 24px; }
   .notice-body { flex-direction: column; align-items: stretch; gap: 16px; }
   .notice-actions { flex-direction: row; flex-wrap: wrap; }
   .notice-actions .cta { flex: 1 1 auto; }
