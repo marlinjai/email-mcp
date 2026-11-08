@@ -53,7 +53,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@azure/msal-node": "^5.0.4",
+    "@azure/msal-node": "^7.2.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "google-auth-library": "^11.3.3",
