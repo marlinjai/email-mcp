@@ -58,7 +58,7 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "google-auth-library": "^11.3.3",
     "googleapis": "^189.0.0",
-    "html-to-text": "^9.0.5",
+    "html-to-text": "^10.0.1",
     "imapflow": "^1.2.9",
     "mailparser": "^3.9.3",
     "nodemailer": "^10.4.0"
