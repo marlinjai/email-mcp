@@ -4,7 +4,7 @@ import { chmod } from 'node:fs/promises';
 const shared = {
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'esm',
   outdir: 'dist',
   outbase: 'src',

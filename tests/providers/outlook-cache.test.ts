@@ -196,6 +196,69 @@ describe('encrypted MSAL token cache', () => {
     await expect(auth.refreshTokenSilent('home-1')).rejects.toBeInstanceOf(MsalCacheDecryptError);
   });
 
+  describe('token flows through real MSAL (no mocks, no network)', () => {
+    const HOME = 'uid-1.9188040d-6c67-4c5b-b112-36a304b66dad';
+    const CACHED_ACCESS_TOKEN = 'cached-access-token-value';
+
+    /** msalCacheJson plus an unexpired access token for the Outlook scopes. */
+    function cacheWithAccessToken(): string {
+      const cache = JSON.parse(msalCacheJson(HOME));
+      const env = 'login.windows.net';
+      const realm = '9188040d-6c67-4c5b-b112-36a304b66dad';
+      const target = 'mail.readwrite mail.send mailboxsettings.readwrite';
+      const now = Math.floor(Date.now() / 1000);
+      cache.AccessToken = {
+        [`${HOME}-${env}-accesstoken-${CLIENT_ID}-${realm}-${target}`]: {
+          home_account_id: HOME,
+          environment: env,
+          credential_type: 'AccessToken',
+          client_id: CLIENT_ID,
+          realm,
+          target,
+          secret: CACHED_ACCESS_TOKEN,
+          token_type: 'Bearer',
+          cached_at: String(now),
+          expires_on: String(now + 3600),
+          extended_expires_on: String(now + 7200),
+        },
+      };
+      return JSON.stringify(cache);
+    }
+
+    it('builds a PKCE authorization URL for the consumers authority', async () => {
+      const auth = new OutlookAuth(CLIENT_ID, encPath);
+      const { url, codeVerifier, state } = await auth.getAuthUrl('http://localhost:3000/callback');
+      const parsed = new URL(url);
+
+      expect(parsed.origin + parsed.pathname).toBe('https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize');
+      expect(parsed.searchParams.get('client_id')).toBe(CLIENT_ID);
+      expect(parsed.searchParams.get('redirect_uri')).toBe('http://localhost:3000/callback');
+      expect(parsed.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(parsed.searchParams.get('state')).toBe(state);
+      expect(parsed.searchParams.get('scope')).toContain('Mail.Send');
+      expect(codeVerifier.length).toBeGreaterThanOrEqual(43);
+    });
+
+    it('refreshTokenSilent returns the cached access token without a network call', async () => {
+      const plugin = createEncryptedFileCachePlugin(encPath);
+      const ctx = fakeContext(cacheWithAccessToken(), true);
+      await plugin.beforeCacheAccess(ctx.context);
+      await plugin.afterCacheAccess(ctx.context);
+
+      const auth = new OutlookAuth(CLIENT_ID, encPath);
+      const result = await auth.refreshTokenSilent(HOME);
+
+      expect(result.accessToken).toBe(CACHED_ACCESS_TOKEN);
+      expect(result.homeAccountId).toBe(HOME);
+      expect(result.expiresOn?.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('refreshTokenSilent rejects when the account is not in the cache', async () => {
+      const auth = new OutlookAuth(CLIENT_ID, encPath);
+      await expect(auth.refreshTokenSilent('missing-home-id')).rejects.toThrow(/No cached MSAL account/);
+    });
+  });
+
   describe('removeCachedAccount (real MSAL cache)', () => {
     async function seed(json: string) {
       const plugin = createEncryptedFileCachePlugin(encPath);

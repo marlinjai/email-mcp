@@ -50,25 +50,25 @@
   "author": "marlinjai",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
-    "@azure/msal-node": "^5.0.4",
+    "@azure/msal-node": "^7.2.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "google-auth-library": "^10.5.0",
-    "googleapis": "^171.4.0",
-    "html-to-text": "^9.0.5",
+    "google-auth-library": "^11.3.3",
+    "googleapis": "^189.0.0",
+    "html-to-text": "^10.0.1",
     "imapflow": "^1.2.9",
     "mailparser": "^3.9.3",
-    "nodemailer": "^8.0.1"
+    "nodemailer": "^10.4.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/html-to-text": "^9.0.4",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^25.2.3",
-    "@types/nodemailer": "^7.0.10",
-    "esbuild": "^0.27.3",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

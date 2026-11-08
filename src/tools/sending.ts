@@ -5,11 +5,15 @@ import type { SendEmailParams } from '../providers/provider.js';
 import type { Contact, Email } from '../models/types.js';
 import { AttachmentsSchema, assertAttachmentTotal, resolveAttachments } from './attachments.js';
 import { escapeHtml, resolveSignature, textToHtml } from './signature.js';
+import { MAX_RECIPIENTS } from './limits.js';
 
 const ContactSchema = z.object({
   email: z.string(),
   name: z.string().optional(),
 });
+
+/** A recipient list (To, Cc, Bcc), bounded at the providers' per-message cap. */
+const ContactListSchema = z.array(ContactSchema).max(MAX_RECIPIENTS);
 
 const BodySchema = z.object({
   text: z.string().optional(),
@@ -71,9 +75,9 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     'Send a new email',
     {
       accountId: z.string(),
-      to: z.array(ContactSchema),
-      cc: z.array(ContactSchema).optional(),
-      bcc: z.array(ContactSchema).optional(),
+      to: ContactListSchema,
+      cc: ContactListSchema.optional(),
+      bcc: ContactListSchema.optional(),
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema,
@@ -110,14 +114,12 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when email is not in INBOX)'),
       body: BodySchema,
       replyAll: z.boolean().optional(),
-      to: z
-        .array(ContactSchema)
+      to: ContactListSchema
         .optional()
         .describe('Replace the default To (the original sender). Use it when the original was sent by you, so the reply goes to the real correspondents instead of back to yourself'),
-      cc: z.array(ContactSchema).optional().describe('Cc recipients. Replaces any Cc carried over by replyAll'),
-      bcc: z.array(ContactSchema).optional(),
-      additionalRecipients: z
-        .array(ContactSchema)
+      cc: ContactListSchema.optional().describe('Cc recipients. Replaces any Cc carried over by replyAll'),
+      bcc: ContactListSchema.optional(),
+      additionalRecipients: ContactListSchema
         .optional()
         .describe('Extra To recipients added to the default or given To (deduplicated by address)'),
       attachments: AttachmentsSchema,
@@ -189,9 +191,9 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     {
       accountId: z.string(),
       emailId: z.string(),
-      to: z.array(ContactSchema),
-      cc: z.array(ContactSchema).optional(),
-      bcc: z.array(ContactSchema).optional(),
+      to: ContactListSchema,
+      cc: ContactListSchema.optional(),
+      bcc: ContactListSchema.optional(),
       body: BodySchema.optional(),
       attachments: AttachmentsSchema.describe('Files to attach to the forward. Total size, together with forwarded original attachments, is capped at 25 MB'),
       includeOriginalAttachments: z
@@ -300,7 +302,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     'Create a new email draft. Pass inReplyToEmailId to save it as a reply in that message\'s thread',
     {
       accountId: z.string(),
-      to: z.array(ContactSchema),
+      to: ContactListSchema,
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema,
@@ -344,7 +346,7 @@ export function registerSendingTools(server: McpServer, accountManager: AccountM
     {
       accountId: z.string(),
       draftId: z.string(),
-      to: z.array(ContactSchema),
+      to: ContactListSchema,
       subject: z.string(),
       body: BodySchema,
       attachments: AttachmentsSchema.describe(

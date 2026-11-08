@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_ATTACHMENTS } from './limits.js';
 import type { Stats } from 'node:fs';
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
@@ -46,8 +47,11 @@ export const AttachmentInputSchema = z
 
 export const AttachmentsSchema = z
   .array(AttachmentInputSchema)
+  .max(MAX_ATTACHMENTS)
   .optional()
-  .describe(`Files to attach. Total size is capped at ${MAX_TOTAL_ATTACHMENT_BYTES / (1024 * 1024)} MB`);
+  .describe(
+    `Files to attach, at most ${MAX_ATTACHMENTS}. Total size is capped at ${MAX_TOTAL_ATTACHMENT_BYTES / (1024 * 1024)} MB`,
+  );
 
 export type AttachmentInput = z.infer<typeof AttachmentInputSchema>;
 

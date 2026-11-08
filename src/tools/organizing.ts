@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
 import type { BatchResult } from '../models/types.js';
+import { emailIdList, labelList } from './limits.js';
 
 function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
@@ -83,7 +84,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     'Delete multiple emails at once. Much faster than individual deletes.',
     {
       accountId: z.string(),
-      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to delete'),
+      emailIds: emailIdList().describe('Array of email IDs to delete'),
       permanent: z.boolean().optional().describe('Permanently delete instead of moving to trash'),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when emails are not in INBOX)'),
     },
@@ -119,7 +120,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     'Move multiple emails to a folder at once. Much faster than individual moves.',
     {
       accountId: z.string(),
-      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to move'),
+      emailIds: emailIdList().describe('Array of email IDs to move'),
       targetFolder: z.string().describe('Destination folder name or ID'),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when emails are not in INBOX)'),
     },
@@ -155,7 +156,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     'Mark multiple emails at once (read/unread, starred, flagged). Much faster than individual marks.',
     {
       accountId: z.string(),
-      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to mark'),
+      emailIds: emailIdList().describe('Array of email IDs to mark'),
       read: z.boolean().optional(),
       starred: z.boolean().optional(),
       flagged: z.boolean().optional(),
@@ -197,9 +198,9 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     'Add or remove labels on multiple emails at once (Gmail only). Much faster than individual email_label calls.',
     {
       accountId: z.string(),
-      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to label'),
-      addLabels: z.array(z.string()).optional(),
-      removeLabels: z.array(z.string()).optional(),
+      emailIds: emailIdList().describe('Array of email IDs to label'),
+      addLabels: labelList().optional(),
+      removeLabels: labelList().optional(),
     },
     async (args) => {
       try {
@@ -243,7 +244,7 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     {
       sourceAccountId: z.string().describe('Account to read messages from'),
       targetAccountId: z.string().describe('Account to import messages into'),
-      emailIds: z.array(z.string()).min(1).describe('Source email IDs to transfer'),
+      emailIds: emailIdList().describe('Source email IDs to transfer'),
       targetFolder: z.string().optional().describe('Destination folder/label in the target account (Gmail label id or name; IMAP/Outlook folder name). Defaults to INBOX.'),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when emails are not in INBOX)'),
       deleteAfter: z.boolean().optional().describe('Send the source copy to trash after a successful import. Default false (copy, leaving the original in place).'),
@@ -311,8 +312,8 @@ export function registerOrganizingTools(server: McpServer, accountManager: Accou
     {
       accountId: z.string(),
       emailId: z.string(),
-      addLabels: z.array(z.string()).optional(),
-      removeLabels: z.array(z.string()).optional(),
+      addLabels: labelList().optional(),
+      removeLabels: labelList().optional(),
     },
     async (args) => {
       try {

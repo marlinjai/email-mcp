@@ -25,7 +25,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       real Gmail and a real Outlook account (create, list, see the rule in the provider's
       settings, delete); the first Gmail run is the Anthropic invoice rule. Google was told
       about the new use of `gmail.settings.basic` in the reply Marlin sent on the
-      verification thread on 2026-10-03 (2026-10-03)
+      verification thread on 2026-10-03 (2026-11-08)
 - [ ] Outgoing attachments (pull request #20 by @jonboy648, reworked onto main): the five
       sending tools take an `attachments` input (a file from the folder named in
       `EMAIL_MCP_ATTACHMENTS_DIR`, off when unset, or base64 content with a filename), capped at
@@ -116,7 +116,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       tests, and a privacy policy section on script-driven use. Declined on the same day: #23
       (`email-mcp-digest`), a personal workflow that belongs in its own package; that would
       need email-mcp to be usable as a library, which is an idea, not a commitment
-      (2026-10-03)
+      (2026-11-08)
 - [x] Credential hardening, pull request #15: the Outlook token cache is now encrypted
       (`msal-cache.enc`, same AES-256-GCM scheme and key as credentials.enc, plaintext caches
       migrated without signing anyone out); `email_remove_account` revokes the Google grant and
