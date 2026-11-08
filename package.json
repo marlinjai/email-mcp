@@ -50,7 +50,7 @@
   "author": "marlinjai",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "@azure/msal-node": "^7.2.1",
