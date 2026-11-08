@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AccountManager } from '../account-manager.js';
 import type { BatchResult } from '../models/types.js';
+import { emailIdList } from './limits.js';
 
 function jsonResult(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data) }] };
@@ -40,7 +41,7 @@ export function registerModerationTools(server: McpServer, accountManager: Accou
     'Report multiple emails as spam/junk at once. Much faster than individual calls.',
     {
       accountId: z.string(),
-      emailIds: z.array(z.string()).min(1).describe('Array of email IDs to report as spam'),
+      emailIds: emailIdList().describe('Array of email IDs to report as spam'),
       sourceFolder: z.string().optional().describe('Source folder (required for IMAP/iCloud when emails are not in INBOX)'),
     },
     async (args) => {
