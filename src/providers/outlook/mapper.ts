@@ -124,41 +124,69 @@ export function mapGraphAttachment(attachment: any): AttachmentMeta {
   };
 }
 
-export function buildGraphFilter(query: any): { filter?: string; search?: string } {
+/**
+ * Microsoft Graph refuses several combinations that look harmless:
+ *  - `$search` cannot be combined with `$filter`, `$orderby` or `$skip`.
+ *  - `from/emailAddress/address eq ...` plus `$orderby receivedDateTime` answers
+ *    "The restriction or sort order is too complex for this operation".
+ *
+ * So whenever the query carries any text criterion (from, to, subject, body) the
+ * whole query is expressed as one Keyword Query Language (KQL) `$search` string,
+ * and the two flags KQL cannot express (unread, starred) are applied client-side.
+ * A query without text criteria keeps the cheap `$filter` plus `$orderby` path.
+ */
+export interface GraphQueryPlan {
+  /** OData `$filter`; only set when no `$search` is used. */
+  filter?: string;
+  /** KQL `$search` string; when set, `$filter`, `$orderby` and `$skip` must not be sent. */
+  search?: string;
+  /** Criteria KQL cannot express, applied to the returned messages. */
+  clientSide: { unreadOnly?: boolean; starredOnly?: boolean };
+}
+
+/**
+ * Quote a KQL value so spaces, hyphens and operators stay inside one term. The whole
+ * `$search` string is itself wrapped in double quotes, so the inner quotes are
+ * backslash-escaped (verified against the live Graph API: a raw inner quote is a
+ * syntax error). Quote and backslash characters in the value are replaced by spaces
+ * so a value can never close its own term.
+ */
+function kqlValue(value: string): string {
+  return `\\"${String(value).replace(/["\\]/g, ' ').trim()}\\"`;
+}
+
+/** KQL date comparisons take a plain yyyy-mm-dd date. */
+function kqlDate(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? String(value).slice(0, 10) : parsed.toISOString().slice(0, 10);
+}
+
+export function buildGraphFilter(query: any): GraphQueryPlan {
+  const hasText = Boolean(query.from || query.to || query.subject || query.body);
+
+  if (hasText) {
+    const parts: string[] = [];
+    if (query.from) parts.push(`from:${kqlValue(query.from)}`);
+    if (query.to) parts.push(`to:${kqlValue(query.to)}`);
+    if (query.subject) parts.push(`subject:${kqlValue(query.subject)}`);
+    if (query.body) parts.push(`body:${kqlValue(query.body)}`);
+    if (query.hasAttachment) parts.push('hasattachments:true');
+    if (query.since) parts.push(`received>=${kqlDate(query.since)}`);
+    if (query.before) parts.push(`received<${kqlDate(query.before)}`);
+    return {
+      search: `"${parts.join(' AND ')}"`,
+      clientSide: {
+        ...(query.unreadOnly ? { unreadOnly: true } : {}),
+        ...(query.starredOnly ? { starredOnly: true } : {}),
+      },
+    };
+  }
+
   const filters: string[] = [];
-  const searchParts: string[] = [];
-
-  if (query.from) {
-    filters.push(`from/emailAddress/address eq '${query.from}'`);
-  }
-  if (query.to) {
-    filters.push(`toRecipients/any(r:r/emailAddress/address eq '${query.to}')`);
-  }
-  if (query.unreadOnly) {
-    filters.push('isRead eq false');
-  }
-  if (query.starredOnly) {
-    filters.push("importance eq 'high'");
-  }
-  if (query.hasAttachment) {
-    filters.push('hasAttachments eq true');
-  }
-  if (query.since) {
-    filters.push(`receivedDateTime ge ${query.since}`);
-  }
-  if (query.before) {
-    filters.push(`receivedDateTime lt ${query.before}`);
-  }
-
-  if (query.subject) {
-    searchParts.push(`subject:${query.subject}`);
-  }
-  if (query.body) {
-    searchParts.push(`body:${query.body}`);
-  }
-
-  return {
-    filter: filters.length > 0 ? filters.join(' and ') : undefined,
-    search: searchParts.length > 0 ? `"${searchParts.join(' AND ')}"` : undefined,
-  };
+  if (query.unreadOnly) filters.push('isRead eq false');
+  if (query.starredOnly) filters.push("importance eq 'high'");
+  if (query.hasAttachment) filters.push('hasAttachments eq true');
+  if (query.since) filters.push(`receivedDateTime ge ${query.since}`);
+  if (query.before) filters.push(`receivedDateTime lt ${query.before}`);
+  return { filter: filters.length > 0 ? filters.join(' and ') : undefined, clientSide: {} };
 }

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Outlook and Hotmail text searches work again.** `email_search` with `from`, `to`, `subject` or `body` failed on Outlook accounts with "The restriction or sort order is too complex" or "$orderBy is not supported with $search", because Microsoft Graph refuses `$search` combined with `$filter`, `$orderby` or `$skip`, and a sender filter combined with the date sort. Any query with a text criterion is now sent as one search string (sender, recipient, subject, body, attachment flag and date range included), paging is emulated by slicing, results come back newest first, and unread or starred filters are applied afterwards. A sender search is now a keyword match (`from: huk` finds HUK-COBURG mail) instead of an exact address.
+- **The Outlook folder list no longer drops the inbox.** Graph returns 10 folders per page and the inbox sorts after them, so `email_list_folders`, and every folder lookup built on it, silently missed it on accounts with ten or more folders. The adapter now asks for the maximum page size and follows every next-page link.
+
 ### Changed
 
 - **The website says up front that Gmail is self-service for now.** A banner above the navigation and a section after the hero explain that Gmail needs your own Google Cloud project until the shared sign-in passes Google's paid security assessment, with the steps beside the donation box. The promise that the maintainer pays what is missing is gone: the campaign has no end date and runs until the goal is reached.
