@@ -41,7 +41,7 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       and opt-in forwarding of the original attachments; the live test per provider also
       covers a threaded reply and a reply draft. Released as 1.10.0 on 2026-10-03, and
       `EMAIL_MCP_ATTACHMENTS_DIR` is set to `~/Documents/email-outbox` in the Infisical Dotfiles
-      project for Marlin's own use (2026-10-10)
+      project for Marlin's own use (2026-11-18)
 - [x] Account signatures and a named From ([plan](docs/plans/2026-10-29-gmail-signature.md)):
       the five sending tools add the Gmail send-as signature (opt out with
       `signature: false`) and From carries the display name. Live-checked on
@@ -145,4 +145,4 @@ an open line on a finished plan, or a live plan indexed nowhere. Rule and gramma
       an extension to HOL Guard (their tool that asks for approval before an agent runs a
       command) so that `email_delete` needs review; the pull request would go to their
       repository, none is needed here. Draft the replies in Marlin's voice for his send; never
-      post without his go (2026-10-10)
+      post without his go (2026-11-18)

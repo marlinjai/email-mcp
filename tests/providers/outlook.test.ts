@@ -90,6 +90,32 @@ describe('OutlookAdapter', () => {
   });
 
   describe('listFolders', () => {
+    it('follows nextLink so folders past the first page (such as the inbox) are not lost', async () => {
+      const first = createMockGraphRequest({
+        value: [{ id: 'f1', displayName: 'Archive', wellKnownName: 'archive' }],
+        '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=page2',
+      });
+      const second = createMockGraphRequest({
+        value: [{ id: 'f2', displayName: 'Posteingang', wellKnownName: 'inbox' }],
+      });
+      mockApiRequests.set('/me/mailFolders', first);
+      mockApiRequests.set('https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=page2', second);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const folders = await adapter.listFolders();
+
+      expect(first.top).toHaveBeenCalledWith(250);
+      expect(folders.map((f) => f.id)).toEqual(['f1', 'f2']);
+      expect(folders.find((f) => f.id === 'f2')?.type).toBe('inbox');
+    });
+
     it('fetches mail folders and maps wellKnownName to folder type', async () => {
       const mockFoldersRequest = createMockGraphRequest({
         value: [
@@ -142,7 +168,7 @@ describe('OutlookAdapter', () => {
   });
 
   describe('search', () => {
-    it('builds OData filter from SearchQuery', async () => {
+    it('builds OData filter from non-text criteria and keeps the date sort', async () => {
       const mockMessagesRequest = createMockGraphRequest({ value: [] });
       mockApiRequests.set('/me/messages', mockMessagesRequest);
 
@@ -154,21 +180,121 @@ describe('OutlookAdapter', () => {
         oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
       });
 
-      await adapter.search({
-        from: 'alice@test.com',
-        unreadOnly: true,
-        since: '2026-01-01',
-        limit: 10,
-        offset: 5,
-      });
+      await adapter.search({ unreadOnly: true, since: '2026-01-01', limit: 10, offset: 5 });
 
-      expect(mockMessagesRequest.filter).toHaveBeenCalled();
       const filterCall = (mockMessagesRequest.filter as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
       expect(filterCall).toContain('isRead eq false');
-      expect(filterCall).toContain("from/emailAddress/address eq 'alice@test.com'");
       expect(filterCall).toContain('receivedDateTime ge 2026-01-01');
+      expect(mockMessagesRequest.search).not.toHaveBeenCalled();
       expect(mockMessagesRequest.top).toHaveBeenCalledWith(10);
       expect(mockMessagesRequest.skip).toHaveBeenCalledWith(5);
+      expect(mockMessagesRequest.orderby).toHaveBeenCalledWith('receivedDateTime desc');
+    });
+
+    it('sends sender searches as $search and never combines it with $filter, $orderby or $skip', async () => {
+      const mockMessagesRequest = createMockGraphRequest({ value: [] });
+      mockApiRequests.set('/me/messages', mockMessagesRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.search({ from: 'huk', since: '2024-01-01T00:00:00Z', hasAttachment: true, limit: 20 });
+
+      const searchCall = (mockMessagesRequest.search as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(searchCall).toBe('"from:\\"huk\\" AND hasattachments:true AND received>=2024-01-01"');
+      expect(mockMessagesRequest.filter).not.toHaveBeenCalled();
+      expect(mockMessagesRequest.orderby).not.toHaveBeenCalled();
+      expect(mockMessagesRequest.skip).not.toHaveBeenCalled();
+      expect(mockMessagesRequest.top).toHaveBeenCalledWith(20);
+    });
+
+    it('pages $search results by slicing, newest first', async () => {
+      const msg = (id: string, date: string) => ({
+        id,
+        conversationId: id,
+        from: { emailAddress: { name: 'A', address: 'a@test.com' } },
+        toRecipients: [],
+        subject: id,
+        receivedDateTime: date,
+        isRead: true,
+        flag: { flagStatus: 'notFlagged' },
+        importance: 'normal',
+      });
+      const mockMessagesRequest = createMockGraphRequest({
+        value: [msg('old', '2026-01-01T00:00:00Z'), msg('newest', '2026-03-01T00:00:00Z'), msg('mid', '2026-02-01T00:00:00Z')],
+      });
+      mockApiRequests.set('/me/messages', mockMessagesRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const page = await adapter.search({ subject: 'x', limit: 1, offset: 1 });
+
+      expect(mockMessagesRequest.top).toHaveBeenCalledWith(2);
+      expect(mockMessagesRequest.skip).not.toHaveBeenCalled();
+      expect(page.map((m) => m.id)).toEqual(['mid']);
+    });
+
+    it('applies unread and starred client-side when a text search is active', async () => {
+      const msg = (id: string, isRead: boolean, importance: string) => ({
+        id,
+        conversationId: id,
+        from: { emailAddress: { name: 'A', address: 'a@test.com' } },
+        toRecipients: [],
+        subject: id,
+        receivedDateTime: '2026-03-01T00:00:00Z',
+        isRead,
+        flag: { flagStatus: 'notFlagged' },
+        importance,
+      });
+      const mockMessagesRequest = createMockGraphRequest({
+        value: [msg('read', true, 'normal'), msg('unread', false, 'normal'), msg('unread-star', false, 'high')],
+      });
+      mockApiRequests.set('/me/messages', mockMessagesRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      const unread = await adapter.search({ subject: 'x', unreadOnly: true });
+      expect(unread.map((m) => m.id).sort()).toEqual(['unread', 'unread-star']);
+      expect(mockMessagesRequest.filter).not.toHaveBeenCalled();
+      expect(mockMessagesRequest.top).toHaveBeenCalledWith(250);
+
+      const starred = await adapter.search({ subject: 'x', unreadOnly: true, starredOnly: true });
+      expect(starred.map((m) => m.id)).toEqual(['unread-star']);
+    });
+
+    it('strips quote characters from search terms so they cannot break out of the term', async () => {
+      const mockMessagesRequest = createMockGraphRequest({ value: [] });
+      mockApiRequests.set('/me/messages', mockMessagesRequest);
+
+      await adapter.connect({
+        id: 'outlook-1',
+        name: 'Test',
+        provider: 'outlook',
+        email: 'test@outlook.com',
+        oauth: { access_token: 'token', refresh_token: 'rt', expiry: '' },
+      });
+
+      await adapter.search({ subject: 'a" OR from:"b' });
+
+      const searchCall = (mockMessagesRequest.search as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      expect(searchCall).toBe('"subject:\\"a  OR from: b\\""');
     });
 
     it('searches by folder when specified', async () => {
@@ -204,8 +330,8 @@ describe('OutlookAdapter', () => {
 
       expect(mockMessagesRequest.search).toHaveBeenCalled();
       const searchCall = (mockMessagesRequest.search as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-      expect(searchCall).toContain('subject:test subject');
-      expect(searchCall).toContain('body:important content');
+      expect(searchCall).toContain('subject:\\"test subject\\"');
+      expect(searchCall).toContain('body:\\"important content\\"');
     });
 
     it('maps Graph messages to Email type', async () => {

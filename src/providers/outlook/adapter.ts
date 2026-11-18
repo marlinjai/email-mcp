@@ -60,6 +60,9 @@ function assertOutlookRequestSize(body: unknown): void {
   }
 }
 
+/** Graph returns at most this many results for a `$search` request. */
+const GRAPH_SEARCH_MAX = 250;
+
 export class OutlookAdapter implements EmailProvider {
   readonly providerType: ProviderTypeValue = ProviderType.Outlook;
   private client: ReturnType<typeof Client.init> | null = null;
@@ -146,8 +149,16 @@ export class OutlookAdapter implements EmailProvider {
 
   async listFolders(): Promise<Folder[]> {
     const client = this.ensureClient();
-    const response = await client.api('/me/mailFolders').get();
-    return (response.value || []).map(mapGraphFolder);
+    // Graph pages mail folders at 10 by default and the inbox sorts late, so a single
+    // unpaged call silently drops it. Ask for the maximum page and follow every nextLink.
+    const folders: any[] = [];
+    let response = await client.api('/me/mailFolders').top(250).get();
+    folders.push(...(response.value || []));
+    while (response['@odata.nextLink']) {
+      response = await client.api(response['@odata.nextLink']).get();
+      folders.push(...(response.value || []));
+    }
+    return folders.map(mapGraphFolder);
   }
 
   async createFolder(name: string, parentPath?: string): Promise<Folder> {
@@ -167,7 +178,7 @@ export class OutlookAdapter implements EmailProvider {
       endpoint = `/me/mailFolders/${encodeURIComponent(folderId)}/messages`;
     }
 
-    const { filter, search } = buildGraphFilter(query);
+    const { filter, search, clientSide } = buildGraphFilter(query);
     let request = client.api(endpoint);
 
     // When body is not needed, use $select to exclude it — dramatically reduces payload
@@ -175,17 +186,37 @@ export class OutlookAdapter implements EmailProvider {
       request = request.select('id,conversationId,parentFolderId,from,toRecipients,ccRecipients,bccRecipients,subject,receivedDateTime,bodyPreview,hasAttachments,isRead,importance,flag,isDraft,categories');
     }
 
+    const offset = query.offset ?? 0;
+
+    if (search) {
+      // Graph rejects $search combined with $filter, $orderby or $skip, so none of them
+      // are sent. Paging is emulated: fetch offset+limit results and slice. Criteria KQL
+      // cannot express (unread, starred) are applied afterwards, so over-fetch for them.
+      request = request.search(search);
+      const needsClientFilter = Boolean(clientSide.unreadOnly || clientSide.starredOnly);
+      if (needsClientFilter) {
+        request = request.top(GRAPH_SEARCH_MAX);
+      } else if (query.limit) {
+        request = request.top(Math.min(offset + query.limit, GRAPH_SEARCH_MAX));
+      }
+
+      const response = await request.get();
+      let emails: Email[] = (response.value || []).map((msg: any) => mapGraphMessage(msg, this.accountId));
+      if (clientSide.unreadOnly) emails = emails.filter((email) => !email.flags.read);
+      if (clientSide.starredOnly) emails = emails.filter((email) => email.flags.starred);
+      // $search results arrive by relevance; return newest first like the filter path.
+      emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return query.limit ? emails.slice(offset, offset + query.limit) : emails.slice(offset);
+    }
+
     if (filter) {
       request = request.filter(filter);
-    }
-    if (search) {
-      request = request.search(search);
     }
     if (query.limit) {
       request = request.top(query.limit);
     }
-    if (query.offset) {
-      request = request.skip(query.offset);
+    if (offset) {
+      request = request.skip(offset);
     }
 
     request = request.orderby('receivedDateTime desc');
